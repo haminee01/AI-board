@@ -1,25 +1,47 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Line, Circle, Text, Group } from "react-konva";
 import type Konva from "konva";
 import { useBoardStore } from "@/stores/useBoardStore";
 import { useWhiteboardRealtime } from "@/contexts/WhiteboardRealtimeContext";
+import { distancePointToSegment } from "@/lib/geometry";
 
 const STROKE_COLOR = "#1e293b";
 const STROKE_WIDTH = 2;
 const CURSOR_RADIUS = 6;
+const ERASER_RADIUS = 24;
 
 function cursorLabel(name: string): string {
   return name.includes("@") ? name.split("@")[0]! : name;
 }
 
+function generateLineId(): string {
+  return `line-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 export function WhiteboardCanvas() {
-  const { lines, cursors, textNodes, addLine } = useBoardStore();
-  const { broadcastLine, broadcastCursor, clearMyCursor } =
-    useWhiteboardRealtime();
+  const {
+    lines,
+    cursors,
+    textNodes,
+    tool,
+    addLine,
+    removeLinesByIds,
+    pushUndo,
+    undo,
+    redo,
+  } = useBoardStore();
+  const {
+    broadcastLine,
+    broadcastCursor,
+    broadcastRemoveLines,
+    clearMyCursor,
+  } = useWhiteboardRealtime();
   const [currentPoints, setCurrentPoints] = useState<number[]>([]);
   const isDrawing = useRef(false);
+  const isErasing = useRef(false);
+  const eraserPushedUndo = useRef(false);
   const currentPointsRef = useRef<number[]>([]);
   currentPointsRef.current = currentPoints;
 
@@ -32,51 +54,134 @@ export function WhiteboardCanvas() {
     [],
   );
 
+  const findLineIdsUnder = useCallback((x: number, y: number): string[] => {
+    const ids: string[] = [];
+    const linesSnapshot = useBoardStore.getState().lines;
+    for (const line of linesSnapshot) {
+      const pts = line.points;
+      for (let i = 0; i < pts.length - 2; i += 2) {
+        const d = distancePointToSegment(
+          x,
+          y,
+          pts[i]!,
+          pts[i + 1]!,
+          pts[i + 2]!,
+          pts[i + 3]!
+        );
+        if (d <= ERASER_RADIUS && line.id) {
+          ids.push(line.id);
+          break;
+        }
+      }
+    }
+    return ids;
+  }, []);
+
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const point = getPointerPosition(e);
       if (!point) return;
+      if (tool === "eraser") {
+        isErasing.current = true;
+        eraserPushedUndo.current = false;
+        const ids = findLineIdsUnder(point[0], point[1]);
+        if (ids.length > 0) {
+          pushUndo();
+          eraserPushedUndo.current = true;
+          removeLinesByIds(ids);
+          broadcastRemoveLines(ids);
+        }
+        return;
+      }
       isDrawing.current = true;
       setCurrentPoints(point);
     },
-    [getPointerPosition],
+    [getPointerPosition, tool, findLineIdsUnder, pushUndo, removeLinesByIds, broadcastRemoveLines],
   );
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const point = getPointerPosition(e);
       if (point) broadcastCursor(point[0], point[1]);
+      if (tool === "eraser" && isErasing.current && point) {
+        const ids = findLineIdsUnder(point[0], point[1]);
+        if (ids.length > 0) {
+          if (!eraserPushedUndo.current) {
+            pushUndo();
+            eraserPushedUndo.current = true;
+          }
+          removeLinesByIds(ids);
+          broadcastRemoveLines(ids);
+        }
+        return;
+      }
       if (!isDrawing.current) return;
       if (!point) return;
       setCurrentPoints((prev) => [...prev, ...point]);
     },
-    [getPointerPosition, broadcastCursor],
+    [
+      getPointerPosition,
+      broadcastCursor,
+      tool,
+      findLineIdsUnder,
+      pushUndo,
+      removeLinesByIds,
+      broadcastRemoveLines,
+    ],
   );
 
   const commitLine = useCallback(() => {
     const points = currentPointsRef.current;
     if (points.length >= 4) {
-      const line = { points: [...points], color: STROKE_COLOR };
+      pushUndo();
+      const line = {
+        id: generateLineId(),
+        points: [...points],
+        color: STROKE_COLOR,
+      };
       addLine(line);
       broadcastLine(line);
     }
-  }, [addLine, broadcastLine]);
+  }, [addLine, broadcastLine, pushUndo]);
 
   const handleMouseUp = useCallback(() => {
+    if (tool === "eraser") {
+      isErasing.current = false;
+      eraserPushedUndo.current = false;
+      return;
+    }
     if (!isDrawing.current) return;
     isDrawing.current = false;
     commitLine();
     setCurrentPoints([]);
-  }, [commitLine]);
+  }, [commitLine, tool]);
 
   const handleMouseLeave = useCallback(() => {
     clearMyCursor();
+    isErasing.current = false;
     if (isDrawing.current) {
       commitLine();
       setCurrentPoints([]);
       isDrawing.current = false;
     }
   }, [commitLine, clearMyCursor]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey) return;
+      if (e.key === "z" || e.key === "y") {
+        if (e.shiftKey) {
+          redo();
+          e.preventDefault();
+        } else {
+          undo();
+          e.preventDefault();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
 
   return (
     <Stage
@@ -91,7 +196,7 @@ export function WhiteboardCanvas() {
       <Layer>
         {lines.map((line, i) => (
           <Line
-            key={i}
+            key={line.id ?? i}
             points={line.points}
             stroke={line.color}
             strokeWidth={STROKE_WIDTH}

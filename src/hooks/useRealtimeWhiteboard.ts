@@ -13,6 +13,7 @@ const CHANNEL_NAME = "whiteboard:default";
 const BROADCAST_EVENT_LINE = "line";
 const BROADCAST_EVENT_CURSOR = "cursor";
 const BROADCAST_EVENT_MINDMAP = "mindmap";
+const BROADCAST_EVENT_REMOVE_LINES = "removeLines";
 const CURSOR_THROTTLE_MS = 80;
 
 const CURSOR_COLORS = [
@@ -66,6 +67,7 @@ export function useRealtimeWhiteboard() {
   const addLine = useBoardStore((s) => s.addLine);
   const setCursor = useBoardStore((s) => s.setCursor);
   const addMindmapNodes = useBoardStore((s) => s.addMindmapNodes);
+  const removeLinesByIds = useBoardStore((s) => s.removeLinesByIds);
   const clientIdRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isSubscribedRef = useRef(false);
@@ -173,7 +175,7 @@ export function useRealtimeWhiteboard() {
       channelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [addLine, setCursor, addMindmapNodes, sendOneLine]);
+  }, [addLine, setCursor, addMindmapNodes, removeLinesByIds, sendOneLine]);
 
   const broadcastLine = useCallback(
     (line: LineData) => {
@@ -219,6 +221,16 @@ export function useRealtimeWhiteboard() {
     });
   }, []);
 
+  const broadcastRemoveLines = useCallback((lineIds: string[]) => {
+    const ch = channelRef.current;
+    if (!ch || !isSubscribedRef.current || lineIds.length === 0) return;
+    ch.send({
+      type: "broadcast",
+      event: BROADCAST_EVENT_REMOVE_LINES,
+      payload: { lineIds },
+    });
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => {
       const pos = lastCursorPosRef.current;
@@ -236,6 +248,7 @@ export function useRealtimeWhiteboard() {
     broadcastLine,
     broadcastCursor,
     broadcastMindmapNodes,
+    broadcastRemoveLines,
     clearMyCursor,
     clientId: clientIdRef.current,
   };

@@ -56,6 +56,13 @@ docker run -p 80:80 ai-whiteboard
 - **2.5:** Supabase 클라이언트 singleton (`src/lib/supabase.ts`)
 - **3단계:** Supabase Realtime Broadcast — 그린 선을 다른 탭/참여자에게 실시간 동기화 (`useRealtimeWhiteboard`)
 - **AI 마인드맵:** 키워드 입력 → `POST /api/ai/mindmap` (OpenAI) → 캔버스에 텍스트 노드 추가 + Realtime으로 공유
+- **보드 저장/불러오기:** Supabase `boards` 테이블 + React Query — 보드 목록, 저장, 새 보드, 불러오기 (로그인 사용자)
+
+## 보드 테이블 설정 (Supabase)
+
+보드 저장 기능을 쓰려면 Supabase SQL Editor에서 아래 마이그레이션을 실행하세요.
+
+- [supabase/migrations/001_boards.sql](supabase/migrations/001_boards.sql) 내용 복사 후 실행
 
 ## 문서
 
