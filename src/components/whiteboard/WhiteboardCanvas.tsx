@@ -1,17 +1,23 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Stage, Layer, Line } from "react-konva";
+import { Stage, Layer, Line, Circle, Text, Group } from "react-konva";
 import type Konva from "konva";
 import { useBoardStore } from "@/stores/useBoardStore";
-import { useRealtimeWhiteboard } from "@/hooks/useRealtimeWhiteboard";
+import { useWhiteboardRealtime } from "@/contexts/WhiteboardRealtimeContext";
 
 const STROKE_COLOR = "#1e293b";
 const STROKE_WIDTH = 2;
+const CURSOR_RADIUS = 6;
+
+function cursorLabel(name: string): string {
+  return name.includes("@") ? name.split("@")[0]! : name;
+}
 
 export function WhiteboardCanvas() {
-  const { lines, addLine } = useBoardStore();
-  const { broadcastLine } = useRealtimeWhiteboard();
+  const { lines, cursors, textNodes, addLine } = useBoardStore();
+  const { broadcastLine, broadcastCursor, clearMyCursor } =
+    useWhiteboardRealtime();
   const [currentPoints, setCurrentPoints] = useState<number[]>([]);
   const isDrawing = useRef(false);
   const currentPointsRef = useRef<number[]>([]);
@@ -38,12 +44,13 @@ export function WhiteboardCanvas() {
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (!isDrawing.current) return;
       const point = getPointerPosition(e);
+      if (point) broadcastCursor(point[0], point[1]);
+      if (!isDrawing.current) return;
       if (!point) return;
       setCurrentPoints((prev) => [...prev, ...point]);
     },
-    [getPointerPosition],
+    [getPointerPosition, broadcastCursor],
   );
 
   const commitLine = useCallback(() => {
@@ -63,12 +70,13 @@ export function WhiteboardCanvas() {
   }, [commitLine]);
 
   const handleMouseLeave = useCallback(() => {
+    clearMyCursor();
     if (isDrawing.current) {
       commitLine();
       setCurrentPoints([]);
       isDrawing.current = false;
     }
-  }, [commitLine]);
+  }, [commitLine, clearMyCursor]);
 
   return (
     <Stage
@@ -99,6 +107,45 @@ export function WhiteboardCanvas() {
             lineCap="round"
             lineJoin="round"
           />
+        )}
+        {textNodes.map((node) => (
+          <Group key={node.id} listening={false}>
+            <Text
+              x={node.x}
+              y={node.y}
+              text={node.text}
+              fontSize={14}
+              fill="#1e293b"
+              listening={false}
+              width={160}
+              wrap="word"
+            />
+          </Group>
+        ))}
+      </Layer>
+      <Layer listening={false}>
+        {Object.entries(cursors).map(
+          ([clientId, { x, y, color, displayName }]) => (
+            <Group key={clientId} listening={false}>
+              <Circle
+                x={x}
+                y={y}
+                radius={CURSOR_RADIUS}
+                fill={color}
+                stroke="#fff"
+                strokeWidth={2}
+                listening={false}
+              />
+              <Text
+                x={x + CURSOR_RADIUS + 4}
+                y={y - 8}
+                text={cursorLabel(displayName ?? clientId.slice(-6))}
+                fontSize={12}
+                fill={color}
+                listening={false}
+              />
+            </Group>
+          ),
         )}
       </Layer>
     </Stage>

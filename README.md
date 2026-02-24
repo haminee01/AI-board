@@ -31,13 +31,15 @@ npm run dev
 
 - `NEXT_PUBLIC_SUPABASE_URL` — Supabase 프로젝트 URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Anon(공개) 키
+- `OPENAI_API_KEY` — AI 마인드맵 생성용 (OpenAI API 키, 서버 전용)
 
-Supabase 대시보드 → Project Settings → API에서 확인.
+Supabase 대시보드 → Project Settings → API에서 확인. OpenAI 키는 [platform.openai.com](https://platform.openai.com)에서 발급.
 
 ## Docker 빌드 (정적 배포)
 
-1. `next.config.ts`에서 `output: "export"` 주석 해제 후 저장.
-2. 빌드 및 실행:
+AI 마인드맵은 API Route를 사용하므로 **정적 export 시 해당 기능은 동작하지 않습니다.** API를 쓰려면 `output: "export"` 없이 `next build` + `next start` 또는 Node 서버로 배포하세요.
+
+정적만 배포할 때: `next.config.ts`에서 `output: "export"` 주석 해제 후:
 
 ```bash
 docker build \
@@ -53,6 +55,7 @@ docker run -p 80:80 ai-whiteboard
 - **2단계:** `useBoardStore`(선 데이터) + react-konva 캔버스 — 마우스 드래그로 선 그리기
 - **2.5:** Supabase 클라이언트 singleton (`src/lib/supabase.ts`)
 - **3단계:** Supabase Realtime Broadcast — 그린 선을 다른 탭/참여자에게 실시간 동기화 (`useRealtimeWhiteboard`)
+- **AI 마인드맵:** 키워드 입력 → `POST /api/ai/mindmap` (OpenAI) → 캔버스에 텍스트 노드 추가 + Realtime으로 공유
 
 ## 문서
 
