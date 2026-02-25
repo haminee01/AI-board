@@ -4,16 +4,21 @@ import { useCallback, useEffect, useRef } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { useBoardStore } from "@/stores/useBoardStore";
-import type { LineData } from "@/stores/useBoardStore";
+import type { LineData, ShapeData } from "@/stores/useBoardStore";
 import type { CursorData } from "@/stores/useBoardStore";
 import type { MindmapNode } from "@/stores/useBoardStore";
 import { useAuth } from "@/lib/auth/auth-context";
 
-const CHANNEL_NAME = "whiteboard:default";
+const CHANNEL_PREFIX = "whiteboard:";
 const BROADCAST_EVENT_LINE = "line";
 const BROADCAST_EVENT_CURSOR = "cursor";
 const BROADCAST_EVENT_MINDMAP = "mindmap";
+const BROADCAST_EVENT_REMOVE_MINDMAP_NODE = "removeMindmapNode";
 const BROADCAST_EVENT_REMOVE_LINES = "removeLines";
+const BROADCAST_EVENT_UPDATE_LINE = "updateLine";
+const BROADCAST_EVENT_SHAPE = "shape";
+const BROADCAST_EVENT_REMOVE_SHAPES = "removeShapes";
+const BROADCAST_EVENT_UPDATE_SHAPE = "updateShape";
 const CURSOR_THROTTLE_MS = 80;
 
 const CURSOR_COLORS = [
@@ -61,13 +66,25 @@ type CursorPayload = {
   displayName?: string;
 };
 type MindmapPayload = { nodes: MindmapNode[] };
+type RemoveMindmapNodePayload = { nodeId: string };
+type RemoveLinesPayload = { lineIds: string[] };
+type UpdateLinePayload = { lineId: string; points: number[] };
+type ShapePayload = { shape: ShapeData };
+type RemoveShapesPayload = { shapeIds: string[] };
+type UpdateShapePayload = { shapeId: string; x: number; y: number };
 
 export function useRealtimeWhiteboard() {
   const { user } = useAuth();
+  const currentBoardId = useBoardStore((s) => s.currentBoardId);
   const addLine = useBoardStore((s) => s.addLine);
   const setCursor = useBoardStore((s) => s.setCursor);
   const addMindmapNodes = useBoardStore((s) => s.addMindmapNodes);
+  const setTextNodes = useBoardStore((s) => s.setTextNodes);
   const removeLinesByIds = useBoardStore((s) => s.removeLinesByIds);
+  const updateLine = useBoardStore((s) => s.updateLine);
+  const addShape = useBoardStore((s) => s.addShape);
+  const removeShapesByIds = useBoardStore((s) => s.removeShapesByIds);
+  const updateShape = useBoardStore((s) => s.updateShape);
   const clientIdRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isSubscribedRef = useRef(false);
@@ -77,6 +94,10 @@ export function useRealtimeWhiteboard() {
   const lastCursorPosRef = useRef<{ x: number; y: number } | null>(null);
   const displayNameRef = useRef<string>("익명");
   displayNameRef.current = getDisplayName(user);
+
+  // 로그인했고 특정 보드를 선택했을 때만 실시간 채널 사용 (익명/미선택 시 채널 미연결)
+  const channelName =
+    user && currentBoardId ? `${CHANNEL_PREFIX}${currentBoardId}` : null;
 
   if (typeof window !== "undefined" && !clientIdRef.current) {
     clientIdRef.current = generateClientId();
@@ -117,7 +138,11 @@ export function useRealtimeWhiteboard() {
 
   useEffect(() => {
     isSubscribedRef.current = false;
-    const channel = supabase.channel(CHANNEL_NAME);
+    channelRef.current = null;
+    if (!channelName) {
+      return;
+    }
+    const channel = supabase.channel(channelName);
     channelRef.current = channel;
 
     const onBroadcast = (ev: string, handler: (p: unknown) => void) =>
@@ -162,6 +187,68 @@ export function useRealtimeWhiteboard() {
       if (Array.isArray(nodes) && nodes.length > 0) addMindmapNodes(nodes);
     });
 
+    onBroadcast(BROADCAST_EVENT_REMOVE_MINDMAP_NODE, (payload: unknown) => {
+      const p = payload as {
+        payload?: RemoveMindmapNodePayload;
+      } & RemoveMindmapNodePayload;
+      const data = p.payload ?? p;
+      const nodeId = data?.nodeId;
+      if (typeof nodeId === "string" && nodeId) {
+        const current = useBoardStore.getState().textNodes;
+        setTextNodes(current.filter((n) => n.id !== nodeId));
+      }
+    });
+
+    onBroadcast(BROADCAST_EVENT_REMOVE_LINES, (payload: unknown) => {
+      const p = payload as {
+        payload?: RemoveLinesPayload;
+      } & RemoveLinesPayload;
+      const data = p.payload ?? p;
+      const lineIds = data?.lineIds;
+      if (Array.isArray(lineIds) && lineIds.length > 0)
+        removeLinesByIds(lineIds);
+    });
+
+    onBroadcast(BROADCAST_EVENT_UPDATE_LINE, (payload: unknown) => {
+      const p = payload as { payload?: UpdateLinePayload } & UpdateLinePayload;
+      const data = p.payload ?? p;
+      const { lineId, points } = data ?? {};
+      if (lineId && Array.isArray(points) && points.length >= 2)
+        updateLine(lineId, points);
+    });
+
+    onBroadcast(BROADCAST_EVENT_SHAPE, (payload: unknown) => {
+      const p = payload as { payload?: ShapePayload } & ShapePayload;
+      const data = p.payload ?? p;
+      const shape = data?.shape;
+      if (
+        shape?.type &&
+        typeof shape.x === "number" &&
+        typeof shape.y === "number"
+      )
+        addShape(shape);
+    });
+
+    onBroadcast(BROADCAST_EVENT_REMOVE_SHAPES, (payload: unknown) => {
+      const p = payload as {
+        payload?: RemoveShapesPayload;
+      } & RemoveShapesPayload;
+      const data = p.payload ?? p;
+      const shapeIds = data?.shapeIds;
+      if (Array.isArray(shapeIds) && shapeIds.length > 0)
+        removeShapesByIds(shapeIds);
+    });
+
+    onBroadcast(BROADCAST_EVENT_UPDATE_SHAPE, (payload: unknown) => {
+      const p = payload as {
+        payload?: UpdateShapePayload;
+      } & UpdateShapePayload;
+      const data = p.payload ?? p;
+      const { shapeId, x, y } = data ?? {};
+      if (shapeId && typeof x === "number" && typeof y === "number")
+        updateShape(shapeId, { x, y });
+    });
+
     channel.subscribe((status: string) => {
       if (status === "SUBSCRIBED") {
         isSubscribedRef.current = true;
@@ -175,7 +262,19 @@ export function useRealtimeWhiteboard() {
       channelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [addLine, setCursor, addMindmapNodes, removeLinesByIds, sendOneLine]);
+  }, [
+    addLine,
+    setCursor,
+    addMindmapNodes,
+    setTextNodes,
+    removeLinesByIds,
+    updateLine,
+    addShape,
+    removeShapesByIds,
+    updateShape,
+    sendOneLine,
+    channelName,
+  ]);
 
   const broadcastLine = useCallback(
     (line: LineData) => {
@@ -221,6 +320,16 @@ export function useRealtimeWhiteboard() {
     });
   }, []);
 
+  const broadcastRemoveMindmapNode = useCallback((nodeId: string) => {
+    const ch = channelRef.current;
+    if (!ch || !isSubscribedRef.current || !nodeId) return;
+    ch.send({
+      type: "broadcast",
+      event: BROADCAST_EVENT_REMOVE_MINDMAP_NODE,
+      payload: { nodeId },
+    });
+  }, []);
+
   const broadcastRemoveLines = useCallback((lineIds: string[]) => {
     const ch = channelRef.current;
     if (!ch || !isSubscribedRef.current || lineIds.length === 0) return;
@@ -230,6 +339,52 @@ export function useRealtimeWhiteboard() {
       payload: { lineIds },
     });
   }, []);
+
+  const broadcastUpdateLine = useCallback(
+    (lineId: string, points: number[]) => {
+      const ch = channelRef.current;
+      if (!ch || !isSubscribedRef.current) return;
+      ch.send({
+        type: "broadcast",
+        event: BROADCAST_EVENT_UPDATE_LINE,
+        payload: { lineId, points },
+      });
+    },
+    [],
+  );
+
+  const broadcastShape = useCallback((shape: ShapeData) => {
+    const ch = channelRef.current;
+    if (!ch || !isSubscribedRef.current) return;
+    ch.send({
+      type: "broadcast",
+      event: BROADCAST_EVENT_SHAPE,
+      payload: { shape },
+    });
+  }, []);
+
+  const broadcastRemoveShapes = useCallback((shapeIds: string[]) => {
+    const ch = channelRef.current;
+    if (!ch || !isSubscribedRef.current || shapeIds.length === 0) return;
+    ch.send({
+      type: "broadcast",
+      event: BROADCAST_EVENT_REMOVE_SHAPES,
+      payload: { shapeIds },
+    });
+  }, []);
+
+  const broadcastUpdateShape = useCallback(
+    (shapeId: string, x: number, y: number) => {
+      const ch = channelRef.current;
+      if (!ch || !isSubscribedRef.current) return;
+      ch.send({
+        type: "broadcast",
+        event: BROADCAST_EVENT_UPDATE_SHAPE,
+        payload: { shapeId, x, y },
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -248,7 +403,12 @@ export function useRealtimeWhiteboard() {
     broadcastLine,
     broadcastCursor,
     broadcastMindmapNodes,
+    broadcastRemoveMindmapNode,
     broadcastRemoveLines,
+    broadcastUpdateLine,
+    broadcastShape,
+    broadcastRemoveShapes,
+    broadcastUpdateShape,
     clearMyCursor,
     clientId: clientIdRef.current,
   };

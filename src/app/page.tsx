@@ -4,12 +4,14 @@ import { BoardToolbar } from "@/components/whiteboard/BoardToolbar";
 import { ToolToggle } from "@/components/whiteboard/ToolToggle";
 import { WhiteboardRealtimeProvider } from "@/contexts/WhiteboardRealtimeContext";
 import { Header } from "@/components/layout/Header";
+import { AnonymousBoardReset } from "@/components/whiteboard/AnonymousBoardReset";
 
 export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col">
       <Header />
       <WhiteboardRealtimeProvider>
+        <AnonymousBoardReset />
         <section className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-white px-4 py-2 shrink-0">
           <ToolToggle />
           <BoardToolbar />

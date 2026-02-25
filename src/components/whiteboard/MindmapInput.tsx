@@ -2,26 +2,8 @@
 
 import { useState } from "react";
 import { useBoardStore } from "@/stores/useBoardStore";
-import type { MindmapNode } from "@/stores/useBoardStore";
 import { useWhiteboardRealtime } from "@/contexts/WhiteboardRealtimeContext";
-
-const LAYOUT_CENTER_X = 400;
-const LAYOUT_START_Y = 100;
-const NODE_PADDING = 36;
-const NODE_LINE_HEIGHT = 22;
-
-function generateId(): string {
-  return `mindmap-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function layoutNodes(texts: string[], startY: number): MindmapNode[] {
-  return texts.map((text, i) => ({
-    id: generateId(),
-    text,
-    x: LAYOUT_CENTER_X - 80,
-    y: startY + i * NODE_PADDING,
-  }));
-}
+import { layoutMindmapNodes } from "@/lib/mindmapLayout";
 
 export function MindmapInput() {
   const textNodes = useBoardStore((s) => s.textNodes);
@@ -38,7 +20,8 @@ export function MindmapInput() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/ai/mindmap", {
+      const base = typeof window !== "undefined" ? window.location.origin : "";
+      const res = await fetch(`${base}/api/mindmap`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ keyword: k }),
@@ -53,11 +36,7 @@ export function MindmapInput() {
         setError("생성된 항목이 없습니다.");
         return;
       }
-      const nextStartY =
-        textNodes.length > 0
-          ? Math.max(...textNodes.map((n) => n.y)) + NODE_LINE_HEIGHT
-          : LAYOUT_START_Y;
-      const nodes = layoutNodes(texts, nextStartY);
+      const nodes = layoutMindmapNodes(texts, textNodes.length);
       addMindmapNodes(nodes);
       broadcastMindmapNodes(nodes);
       setKeyword("");
