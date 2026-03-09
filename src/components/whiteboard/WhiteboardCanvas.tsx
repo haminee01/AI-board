@@ -90,6 +90,9 @@ export function WhiteboardCanvas() {
     y: number;
     node: MindmapNode;
   } | null>(null);
+  const [hoveredMindmapNodeId, setHoveredMindmapNodeId] = useState<
+    string | null
+  >(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   /** 마인드맵 버튼 위에서 mousedown 했을 때 해당 노드 (클릭 완료 시 2단계 생성용) */
@@ -897,25 +900,46 @@ export function WhiteboardCanvas() {
           {/* 마인드맵 노드 레이어를 맨 위에 배치 - getIntersection이 버튼을 찾도록 */}
           <Layer listening={true}>
             {textNodes.map((node) => (
-              <Group key={node.id} x={node.x} y={node.y} listening={false}>
+              <Group key={node.id} x={node.x} y={node.y} listening={true}>
                 <Rect
                   name="mindmap-node-rect"
                   width={BTN_WIDTH}
                   height={BTN_HEIGHT}
-                  fill="#f1f5f9"
-                  stroke="#94a3b8"
+                  fill={
+                    hoveredMindmapNodeId === node.id ? "#e2e8f0" : "#f9fafb"
+                  }
+                  stroke={
+                    hoveredMindmapNodeId === node.id ? "#64748b" : "#cbd5e1"
+                  }
                   strokeWidth={1}
                   cornerRadius={4}
                   listening={true}
+                  onMouseEnter={(e) => {
+                    const stage = e.target.getStage();
+                    const container = stage?.container();
+                    if (container) container.style.cursor = "pointer";
+                    setHoveredMindmapNodeId(node.id);
+                  }}
+                  onMouseLeave={(e) => {
+                    const stage = e.target.getStage();
+                    const container = stage?.container();
+                    if (container) container.style.cursor = "default";
+                    setHoveredMindmapNodeId((prev) =>
+                      prev === node.id ? null : prev,
+                    );
+                  }}
                 />
                 <Text
-                  x={6}
-                  y={5}
+                  x={0}
+                  y={0}
                   text={node.text}
                   fontSize={12}
                   fill="#1e293b"
                   listening={false}
-                  width={BTN_WIDTH - 12}
+                  width={BTN_WIDTH}
+                  height={BTN_HEIGHT}
+                  align="center"
+                  verticalAlign="middle"
                   ellipsis
                 />
               </Group>
