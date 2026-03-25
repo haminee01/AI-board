@@ -4,13 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
+import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
+import { toAuthErrorInfo, type AuthErrorInfo } from "@/lib/auth/auth-error";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AuthErrorInfo | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -20,7 +22,7 @@ export default function LoginPage() {
     const { error } = await signIn(email, password);
     setLoading(false);
     if (error) {
-      setError(error.message);
+      setError(toAuthErrorInfo(error));
       return;
     }
     router.push("/");
@@ -71,11 +73,7 @@ export default function LoginPage() {
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
             />
           </div>
-          {error && (
-            <p className="text-sm text-red-600" role="alert">
-              {error}
-            </p>
-          )}
+          {error && <AuthErrorBanner error={error} />}
           <button
             type="submit"
             disabled={loading}

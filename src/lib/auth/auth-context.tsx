@@ -47,27 +47,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = useCallback(
-    async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
+    try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       return { error: error as Error | null };
-    },
-    [],
-  );
+    } catch (e) {
+      return { error: e instanceof Error ? e : new Error(String(e)) };
+    }
+  }, []);
 
-  const signUp = useCallback(
-    async (email: string, password: string) => {
+  const signUp = useCallback(async (email: string, password: string) => {
+    try {
       const { error } = await supabase.auth.signUp({
         email,
         password,
       });
       return { error: error as Error | null };
-    },
-    [],
-  );
+    } catch (e) {
+      return { error: e instanceof Error ? e : new Error(String(e)) };
+    }
+  }, []);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -80,9 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
   };
 
-  return (
-    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

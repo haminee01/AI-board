@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/auth-context";
+import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
+import { toAuthErrorInfo, type AuthErrorInfo } from "@/lib/auth/auth-error";
 
 export default function SignupPage() {
   const { signUp } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AuthErrorInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -19,7 +21,7 @@ export default function SignupPage() {
     const { error } = await signUp(email, password);
     setLoading(false);
     if (error) {
-      setError(error.message);
+      setError(toAuthErrorInfo(error));
       return;
     }
     setSuccess(true);
@@ -43,7 +45,10 @@ export default function SignupPage() {
             로그인 페이지로
           </Link>
           <p className="mt-4">
-            <Link href="/" className="text-sm text-slate-500 hover:text-slate-700">
+            <Link
+              href="/"
+              className="text-sm text-slate-500 hover:text-slate-700"
+            >
               ← 메인으로
             </Link>
           </p>
@@ -98,9 +103,15 @@ export default function SignupPage() {
             />
           </div>
           {error && (
-            <p className="text-sm text-red-600" role="alert">
-              {error}
-            </p>
+            <AuthErrorBanner
+              error={error}
+              actionHref={
+                error.kind === "userAlreadyExists" ? "/login" : undefined
+              }
+              actionLabel={
+                error.kind === "userAlreadyExists" ? "로그인하기" : undefined
+              }
+            />
           )}
           <button
             type="submit"

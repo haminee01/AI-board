@@ -15,9 +15,15 @@ export function useMindmapGenerate() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const generate = useCallback(
-    async (keyword: string) => {
+    async (
+      keyword: string,
+    ): Promise<{ nodes: string[]; error: Error | null }> => {
       const k = keyword.trim();
-      if (!k) return;
+      if (!k)
+        return {
+          nodes: [],
+          error: new Error("키워드를 입력해 주세요."),
+        };
       setIsGenerating(true);
       try {
         const base =
@@ -27,14 +33,37 @@ export function useMindmapGenerate() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ keyword: k }),
         });
-        const data = await res.json();
-        if (!res.ok) return;
-        const texts = data.nodes ?? [];
-        if (texts.length === 0) return;
+        const data: unknown = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          const maybeError =
+            (data as { error?: unknown } | null)?.error ?? null;
+          return {
+            nodes: [],
+            error: new Error(
+              typeof maybeError === "string" ? maybeError : "요청 실패",
+            ),
+          };
+        }
+
+        const texts =
+          (data as { nodes?: unknown } | null)?.nodes &&
+          Array.isArray((data as { nodes?: unknown }).nodes)
+            ? ((data as { nodes: unknown[] }).nodes as unknown[]).filter(
+                (t): t is string => typeof t === "string",
+              )
+            : [];
+
+        if (texts.length === 0) {
+          return { nodes: [], error: new Error("생성된 항목이 없습니다.") };
+        }
+
         const startIndex = useBoardStore.getState().textNodes.length;
         const nodes = layoutMindmapNodes(texts, startIndex);
         addMindmapNodes(nodes);
         broadcastMindmapNodes(nodes);
+
+        return { nodes: texts, error: null };
       } finally {
         setIsGenerating(false);
       }

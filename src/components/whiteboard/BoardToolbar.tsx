@@ -6,6 +6,7 @@ import { useBoardStore } from "@/stores/useBoardStore";
 import {
   useBoardsQuery,
   useSaveBoardMutation,
+  useDeleteBoardMutation,
   useBoardMembersQuery,
   useBoardJoinRequestsQuery,
   useInviteMemberMutation,
@@ -20,6 +21,7 @@ export function BoardToolbar() {
   const { user } = useAuth();
   const { data: boards = [], isLoading } = useBoardsQuery(user?.id);
   const saveMutation = useSaveBoardMutation(user?.id);
+  const deleteMutation = useDeleteBoardMutation(user?.id);
   const inviteMutation = useInviteMemberMutation(user?.id);
   const acceptMutation = useAcceptJoinRequestMutation(user?.id);
   const rejectMutation = useRejectJoinRequestMutation(user?.id);
@@ -101,6 +103,27 @@ export function BoardToolbar() {
     setEditingTitle(DEFAULT_TITLE);
     setEditingVisibility("private");
     if (selectRef.current) selectRef.current.value = "";
+  };
+
+  const handleDeleteBoard = () => {
+    if (!currentBoardId) return;
+    if (!isOwner) return;
+    const ok = window.confirm(
+      "정말 이 보드를 삭제할까요? 삭제는 되돌릴 수 없어요.",
+    );
+    if (!ok) return;
+
+    deleteMutation.mutate(currentBoardId, {
+      onSuccess: () => {
+        setCurrentBoardId(null);
+        setBoardContent({ lines: [], textNodes: [], shapes: [] });
+        setEditingTitle(DEFAULT_TITLE);
+        setEditingVisibility("private");
+        setInviteOpen(false);
+        setJoinRequestsOpen(false);
+        if (selectRef.current) selectRef.current.value = "";
+      },
+    });
   };
 
   const handleInvite = async () => {
@@ -203,6 +226,17 @@ export function BoardToolbar() {
             <option value="private">비공개</option>
           </select>
         </label>
+      )}
+      {isOwner && currentBoardId && (
+        <button
+          type="button"
+          onClick={handleDeleteBoard}
+          disabled={deleteMutation.isPending}
+          className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+          title="현재 보드를 삭제합니다"
+        >
+          {deleteMutation.isPending ? "삭제 중…" : "보드 삭제"}
+        </button>
       )}
       <button
         type="button"
@@ -345,6 +379,11 @@ export function BoardToolbar() {
       {saveMutation.isError && (
         <span className="text-sm text-red-600" role="alert">
           {String(saveMutation.error?.message)}
+        </span>
+      )}
+      {deleteMutation.isError && (
+        <span className="text-sm text-red-600" role="alert">
+          {String(deleteMutation.error?.message)}
         </span>
       )}
     </div>

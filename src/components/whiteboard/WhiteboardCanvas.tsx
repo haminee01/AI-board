@@ -24,7 +24,7 @@ import {
   rectsIntersect,
 } from "@/lib/geometry";
 import { BTN_WIDTH, BTN_HEIGHT } from "@/lib/mindmapLayout";
-import { useMindmapGenerate } from "@/hooks/useMindmapGenerate";
+import { useMindmapGeneratorModalStore } from "@/stores/useMindmapGeneratorModalStore";
 
 const STROKE_COLOR = "#1e293b";
 const STROKE_WIDTH = 2;
@@ -70,8 +70,7 @@ export function WhiteboardCanvas() {
     broadcastRemoveMindmapNode,
     clearMyCursor,
   } = useWhiteboardRealtime();
-  const { generate: generateMindmap, isGenerating: isMindmapGenerating } =
-    useMindmapGenerate();
+  const openMindmapModal = useMindmapGeneratorModalStore((s) => s.open);
   const [currentPoints, setCurrentPoints] = useState<number[]>([]);
   /** Shift+드래그로 선택된 선 id 목록 */
   const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
@@ -556,7 +555,7 @@ export function WhiteboardCanvas() {
     if (mouseDownMindmapNodeRef.current) {
       const node = mouseDownMindmapNodeRef.current;
       mouseDownMindmapNodeRef.current = null;
-      if (!isMindmapGenerating) generateMindmap(node.text);
+      openMindmapModal({ keyword: node.text, autoGenerate: true });
       return;
     }
     if (isDrawingShapeRef.current && draftShapeRef.current) {
@@ -612,8 +611,7 @@ export function WhiteboardCanvas() {
     tool,
     getLineIdsInRect,
     getShapeIdsInRect,
-    generateMindmap,
-    isMindmapGenerating,
+    openMindmapModal,
     pushUndo,
     addShape,
     broadcastShape,
@@ -970,7 +968,10 @@ export function WhiteboardCanvas() {
             type="button"
             className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
             onClick={() => {
-              if (!isMindmapGenerating) generateMindmap(contextMenu.node.text);
+              openMindmapModal({
+                keyword: contextMenu.node.text,
+                autoGenerate: true,
+              });
               setContextMenu(null);
             }}
           >
