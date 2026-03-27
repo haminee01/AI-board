@@ -230,6 +230,7 @@ export function WhiteboardCanvas() {
   const colorMenuRef = useRef<HTMLDivElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   /** 마인드맵 버튼 위에서 mousedown 했을 때 해당 노드 (클릭 완료 시 2단계 생성용) */
   const mouseDownMindmapNodeRef = useRef<MindmapNode | null>(null);
   const isDrawing = useRef(false);
@@ -933,18 +934,8 @@ export function WhiteboardCanvas() {
         setContextMenu({ x: e.clientX, y: e.clientY, node });
         return;
       }
-      if (tool === "pen" || tool === "highlighter") {
-        e.preventDefault();
-        e.stopPropagation();
-        setContextMenu(null);
-        setColorMenu({
-          x: e.clientX,
-          y: e.clientY,
-          target: tool,
-        });
-      }
     },
-    [getStagePosFromEvent, getMindmapNodeAtStagePos, tool],
+    [getStagePosFromEvent, getMindmapNodeAtStagePos],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -1219,26 +1210,45 @@ export function WhiteboardCanvas() {
 
   useEffect(() => {
     const onGlobalContextMenu = (e: MouseEvent) => {
-      if (tool !== "pen" && tool !== "highlighter") return;
-      if (isEditableKeyboardTarget(e.target)) return;
-      // 캔버스 내부 우클릭은 기존 핸들러(노드 메뉴/색상 메뉴)로 처리
-      if (
-        canvasContainerRef.current &&
-        canvasContainerRef.current.contains(e.target as Node)
-      ) {
-        return;
-      }
+      const targetEl = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-color-menu-target]",
+      );
+      const menuTarget = targetEl?.dataset.colorMenuTarget;
+      if (menuTarget !== "pen" && menuTarget !== "highlighter") return;
       e.preventDefault();
       setContextMenu(null);
       setColorMenu({
         x: e.clientX,
         y: e.clientY,
-        target: tool,
+        target: menuTarget,
       });
     };
     window.addEventListener("contextmenu", onGlobalContextMenu);
     return () => window.removeEventListener("contextmenu", onGlobalContextMenu);
-  }, [tool]);
+  }, []);
+
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+
+    const syncCanvasSize = () => {
+      setCanvasSize({
+        width: Math.max(1, Math.floor(el.clientWidth)),
+        height: Math.max(1, Math.floor(el.clientHeight)),
+      });
+    };
+
+    syncCanvasSize();
+
+    const observer = new ResizeObserver(syncCanvasSize);
+    observer.observe(el);
+    window.addEventListener("resize", syncCanvasSize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncCanvasSize);
+    };
+  }, []);
 
   return (
     <React.Fragment>
@@ -1282,8 +1292,8 @@ export function WhiteboardCanvas() {
           ref={(node) => {
             stageRef.current = node ?? null;
           }}
-          width={typeof window !== "undefined" ? window.innerWidth : 800}
-          height={typeof window !== "undefined" ? window.innerHeight - 48 : 600}
+          width={canvasSize.width}
+          height={canvasSize.height}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -1599,7 +1609,7 @@ export function WhiteboardCanvas() {
         </Stage>
       </div>
       {activeNote && (
-        <aside className="fixed right-4 top-16 z-40 w-80 max-h-[calc(100vh-5rem)] overflow-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+        <aside className="fixed inset-x-2 bottom-2 top-14 z-40 overflow-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-16 sm:w-80 sm:max-h-[calc(100vh-5rem)]">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">
               텍스트/댓글

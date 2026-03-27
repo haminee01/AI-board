@@ -43,6 +43,7 @@ export function MindmapGeneratorModal() {
   }>({ active: false, offsetX: 0, offsetY: 0 });
 
   const [pos, setPos] = useState<{ x: number; y: number }>({ x: 24, y: 84 });
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
   const lastAutoKeywordRef = useRef<string | null>(null);
 
   const filteredResults = useMemo(() => {
@@ -104,6 +105,31 @@ export function MindmapGeneratorModal() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [close, isOpen]);
 
+  useEffect(() => {
+    const syncViewport = () => {
+      const compact = window.innerWidth < 768;
+      setIsCompactViewport(compact);
+      if (compact) {
+        setPos({ x: 8, y: 8 });
+      } else {
+        setPos((prev) => {
+          const panelWidth = 460;
+          const panelHeight = 520;
+          const maxX = Math.max(8, window.innerWidth - panelWidth - 8);
+          const maxY = Math.max(8, window.innerHeight - panelHeight - 8);
+          return {
+            x: clamp(prev.x, 8, maxX),
+            y: clamp(prev.y, 8, maxY),
+          };
+        });
+      }
+    };
+
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
+
   const startDrag = useCallback((clientX: number, clientY: number) => {
     const rect = panelRef.current?.getBoundingClientRect();
     const width = rect?.width ?? 420;
@@ -159,11 +185,12 @@ export function MindmapGeneratorModal() {
 
   const onPanelPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (isCompactViewport) return;
       if (e.button !== 0) return;
       if (isInteractiveTarget(e.target)) return;
       startDrag(e.clientX, e.clientY);
     },
-    [isInteractiveTarget, startDrag],
+    [isCompactViewport, isInteractiveTarget, startDrag],
   );
 
   if (!isOpen) return null;
@@ -177,13 +204,20 @@ export function MindmapGeneratorModal() {
 
       <div
         ref={panelRef}
-        className="absolute w-[460px] rounded-xl border border-slate-200 bg-white shadow-xl"
-        style={{ left: pos.x, top: pos.y }}
+        className="absolute max-h-[calc(100vh-1rem)] w-[min(460px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+        style={
+          isCompactViewport
+            ? { left: 8, right: 8, top: 8, bottom: 8, width: "auto" }
+            : { left: pos.x, top: pos.y }
+        }
         onPointerDown={onPanelPointerDown}
       >
         <div
-          className="flex items-center justify-between gap-2 rounded-t-xl border-b bg-slate-50 px-3 py-2 cursor-move"
+          className={`flex items-center justify-between gap-2 rounded-t-xl border-b bg-slate-50 px-3 py-2 ${
+            isCompactViewport ? "cursor-default" : "cursor-move"
+          }`}
           onPointerDown={(e) => {
+            if (isCompactViewport) return;
             if (e.button !== 0) return;
             const el = e.target as HTMLElement | null;
             if (
@@ -210,7 +244,7 @@ export function MindmapGeneratorModal() {
           </button>
         </div>
 
-        <div className="p-3 space-y-3">
+        <div className="space-y-3 overflow-auto p-3">
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-slate-700">
               키워드

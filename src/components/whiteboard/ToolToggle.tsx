@@ -21,7 +21,10 @@ export function ToolToggle() {
           key={id}
           type="button"
           onClick={() => setTool(id)}
-          className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${
+          data-color-menu-target={
+            id === "pen" || id === "highlighter" ? id : undefined
+          }
+          className={`rounded-md px-2 py-1 text-xs font-medium transition-colors sm:px-2.5 sm:text-sm ${
             tool === id
               ? "bg-slate-800 text-white"
               : "text-slate-600 hover:bg-slate-100"
