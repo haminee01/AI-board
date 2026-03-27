@@ -52,6 +52,26 @@ const CURSOR_RADIUS = 6;
 const ERASER_RADIUS = 24;
 /** 선택된 선 위에서 드래그 시작할 때 인식 반경 */
 const MOVE_HIT_RADIUS = 12;
+const PEN_COLOR_PRESETS = [
+  "#1e293b",
+  "#0f172a",
+  "#ef4444",
+  "#f97316",
+  "#22c55e",
+  "#3b82f6",
+  "#8b5cf6",
+  "#111827",
+];
+const HIGHLIGHTER_COLOR_PRESETS = [
+  "#fde047",
+  "#facc15",
+  "#86efac",
+  "#67e8f9",
+  "#93c5fd",
+  "#c4b5fd",
+  "#f9a8d4",
+  "#fdba74",
+];
 
 function cursorLabel(name: string): string {
   return name.includes("@") ? name.split("@")[0]! : name;
@@ -194,10 +214,21 @@ export function WhiteboardCanvas() {
     y: number;
     node: MindmapNode;
   } | null>(null);
+  const [colorMenu, setColorMenu] = useState<{
+    x: number;
+    y: number;
+    target: "pen" | "highlighter";
+  } | null>(null);
+  const [penColor, setPenColor] = useState(STROKE_COLOR);
+  const [highlighterColor, setHighlighterColor] = useState(
+    HIGHLIGHTER_STROKE_COLOR,
+  );
   const [hoveredMindmapNodeId, setHoveredMindmapNodeId] = useState<
     string | null
   >(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const colorMenuRef = useRef<HTMLDivElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   /** 마인드맵 버튼 위에서 mousedown 했을 때 해당 노드 (클릭 완료 시 2단계 생성용) */
   const mouseDownMindmapNodeRef = useRef<MindmapNode | null>(null);
@@ -801,19 +832,19 @@ export function WhiteboardCanvas() {
           ? {
               id: generateLineId(),
               points: [...points],
-              color: HIGHLIGHTER_STROKE_COLOR,
+              color: highlighterColor,
               strokeWidth: HIGHLIGHTER_STROKE_WIDTH,
               opacity: HIGHLIGHTER_OPACITY,
             }
           : {
               id: generateLineId(),
               points: [...points],
-              color: STROKE_COLOR,
+              color: penColor,
             };
       addLine(line);
       broadcastLine(line);
     }
-  }, [addLine, broadcastLine, pushUndo]);
+  }, [addLine, broadcastLine, highlighterColor, penColor, pushUndo]);
 
   const handleMouseUp = useCallback(() => {
     if (mouseDownMindmapNodeRef.current) {
@@ -898,10 +929,22 @@ export function WhiteboardCanvas() {
         e.preventDefault();
         e.stopPropagation();
         mouseDownMindmapNodeRef.current = null;
+        setColorMenu(null);
         setContextMenu({ x: e.clientX, y: e.clientY, node });
+        return;
+      }
+      if (tool === "pen" || tool === "highlighter") {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu(null);
+        setColorMenu({
+          x: e.clientX,
+          y: e.clientY,
+          target: tool,
+        });
       }
     },
-    [getStagePosFromEvent, getMindmapNodeAtStagePos],
+    [getStagePosFromEvent, getMindmapNodeAtStagePos, tool],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -1150,22 +1193,57 @@ export function WhiteboardCanvas() {
   ]);
 
   useEffect(() => {
-    if (!contextMenu) return;
+    if (!contextMenu && !colorMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        contextMenuRef.current &&
-        !contextMenuRef.current.contains(e.target as Node)
-      ) {
+      const target = e.target as Node;
+      const outsideContext =
+        !contextMenuRef.current || !contextMenuRef.current.contains(target);
+      const outsideColor =
+        !colorMenuRef.current || !colorMenuRef.current.contains(target);
+      if (outsideContext) setContextMenu(null);
+      if (outsideColor) setColorMenu(null);
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
         setContextMenu(null);
+        setColorMenu(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [contextMenu]);
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [contextMenu, colorMenu]);
+
+  useEffect(() => {
+    const onGlobalContextMenu = (e: MouseEvent) => {
+      if (tool !== "pen" && tool !== "highlighter") return;
+      if (isEditableKeyboardTarget(e.target)) return;
+      // 캔버스 내부 우클릭은 기존 핸들러(노드 메뉴/색상 메뉴)로 처리
+      if (
+        canvasContainerRef.current &&
+        canvasContainerRef.current.contains(e.target as Node)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setContextMenu(null);
+      setColorMenu({
+        x: e.clientX,
+        y: e.clientY,
+        target: tool,
+      });
+    };
+    window.addEventListener("contextmenu", onGlobalContextMenu);
+    return () => window.removeEventListener("contextmenu", onGlobalContextMenu);
+  }, [tool]);
 
   return (
     <React.Fragment>
       <div
+        ref={canvasContainerRef}
         className="w-full h-full"
         style={{ position: "relative" }}
         onContextMenu={handleNativeContextMenu}
@@ -1232,11 +1310,7 @@ export function WhiteboardCanvas() {
             {currentPoints.length >= 2 && (
               <Line
                 points={currentPoints}
-                stroke={
-                  tool === "highlighter"
-                    ? HIGHLIGHTER_STROKE_COLOR
-                    : STROKE_COLOR
-                }
+                stroke={tool === "highlighter" ? highlighterColor : penColor}
                 strokeWidth={
                   tool === "highlighter"
                     ? HIGHLIGHTER_STROKE_WIDTH
@@ -1857,6 +1931,47 @@ export function WhiteboardCanvas() {
             </div>
           </div>
         </aside>
+      )}
+      {colorMenu && (
+        <div
+          ref={colorMenuRef}
+          className="fixed z-50 rounded-lg border border-slate-200 bg-white p-2 shadow-lg"
+          style={{ left: colorMenu.x, top: colorMenu.y + 8 }}
+        >
+          <p className="mb-1 text-[11px] text-slate-500">
+            {colorMenu.target === "pen" ? "펜 색상" : "형광펜 색상"}
+          </p>
+          <div className="mb-2 grid grid-cols-4 gap-1">
+            {(colorMenu.target === "pen"
+              ? PEN_COLOR_PRESETS
+              : HIGHLIGHTER_COLOR_PRESETS
+            ).map((color) => (
+              <button
+                key={color}
+                type="button"
+                className="h-5 w-5 rounded border border-slate-300"
+                style={{ backgroundColor: color }}
+                onClick={() => {
+                  if (colorMenu.target === "pen") setPenColor(color);
+                  else setHighlighterColor(color);
+                  setColorMenu(null);
+                }}
+                aria-label={`색상 ${color}`}
+                title={color}
+              />
+            ))}
+          </div>
+          <input
+            type="color"
+            value={colorMenu.target === "pen" ? penColor : highlighterColor}
+            onChange={(e) => {
+              const color = e.target.value;
+              if (colorMenu.target === "pen") setPenColor(color);
+              else setHighlighterColor(color);
+            }}
+            className="h-7 w-full cursor-pointer rounded border border-slate-300"
+          />
+        </div>
       )}
       {contextMenu && (
         <div
