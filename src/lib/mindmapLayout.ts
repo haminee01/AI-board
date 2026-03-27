@@ -30,6 +30,7 @@ export function layoutMindmapNodes(
       text,
       x: GRID_LEFT + col * (BTN_WIDTH + GAP),
       y: GRID_TOP + row * (BTN_HEIGHT + GAP),
+      kind: "mindmap" as const,
     };
   });
 }

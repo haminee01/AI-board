@@ -10,9 +10,9 @@ export function Header() {
     <header className="h-12 flex items-center justify-between px-4 border-b border-slate-200 bg-white shrink-0">
       <div className="flex items-center gap-2">
         <Link href="/" className="text-lg font-semibold text-slate-800">
-          AI 실시간 협업 화이트보드
+          MindGrid
         </Link>
-        <span className="text-sm text-slate-500">— 드래그로 선 그리기</span>
+        <span className="text-sm text-slate-500"></span>
       </div>
       <nav className="flex items-center gap-3">
         {loading ? (

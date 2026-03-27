@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useBoardStore } from "@/stores/useBoardStore";
 import {
@@ -42,7 +42,9 @@ export function BoardToolbar() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [joinRequestsOpen, setJoinRequestsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const selectRef = useRef<HTMLSelectElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const currentBoard = boards.find((b) => b.id === currentBoardId);
   const isOwner = !!user && !!currentBoard && currentBoard.user_id === user.id;
@@ -170,6 +172,31 @@ export function BoardToolbar() {
     }
   };
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClickOutside = (event: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (menuRef.current.contains(event.target as Node)) return;
+      setMenuOpen(false);
+      setInviteOpen(false);
+      setJoinRequestsOpen(false);
+    };
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+      setInviteOpen(false);
+      setJoinRequestsOpen(false);
+    };
+
+    window.addEventListener("mousedown", onClickOutside);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      window.removeEventListener("mousedown", onClickOutside);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [menuOpen]);
+
   if (!user) {
     return (
       <p className="text-sm text-slate-500">
@@ -179,212 +206,256 @@ export function BoardToolbar() {
   }
 
   return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <label className="flex items-center gap-2 text-sm text-slate-700">
-        제목
-        <input
-          type="text"
-          value={editingTitle}
-          onChange={(e) => setEditingTitle(e.target.value)}
-          placeholder={DEFAULT_TITLE}
-          className="w-36 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-        />
-      </label>
-      <label className="flex items-center gap-2 text-sm text-slate-700">
-        보드
-        <select
-          key={selectKey}
-          ref={selectRef}
-          onChange={handleSelectBoard}
-          defaultValue={currentBoardId ?? ""}
-          className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-          disabled={isLoading}
-        >
-          <option value="">(새 보드)</option>
-          {boards.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.title || DEFAULT_TITLE}
-              {(b as { visibility?: string }).visibility === "public"
-                ? " (공개)"
-                : ""}
-            </option>
-          ))}
-        </select>
-      </label>
-      {currentBoardId && (
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          공개
-          <select
-            value={editingVisibility}
-            onChange={(e) =>
-              setEditingVisibility(e.target.value as BoardVisibility)
-            }
-            className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-            disabled={!isOwner}
-          >
-            <option value="public">공개</option>
-            <option value="private">비공개</option>
-          </select>
-        </label>
-      )}
-      {isOwner && currentBoardId && (
-        <button
-          type="button"
-          onClick={handleDeleteBoard}
-          disabled={deleteMutation.isPending}
-          className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-          title="현재 보드를 삭제합니다"
-        >
-          {deleteMutation.isPending ? "삭제 중…" : "보드 삭제"}
-        </button>
-      )}
+    <div className="relative" ref={menuRef}>
       <button
         type="button"
-        onClick={handleSave}
-        disabled={saveMutation.isPending}
-        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        onClick={() => setMenuOpen((o) => !o)}
+        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        aria-expanded={menuOpen}
+        aria-haspopup="menu"
       >
-        {saveMutation.isPending ? "저장 중…" : "저장"}
+        <span className="text-base leading-none">☰</span>
+        <span>보드 메뉴</span>
       </button>
-      <button
-        type="button"
-        onClick={handleNewBoard}
-        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-      >
-        새 보드
-      </button>
-      {isOwner && currentBoard?.visibility === "private" && (
-        <>
-          <button
-            type="button"
-            onClick={() => {
-              const url = `${typeof window !== "undefined" ? window.location.origin : ""}/board/${currentBoardId}`;
-              void navigator.clipboard.writeText(url).then(() => {
-                alert("초대 링크가 복사되었습니다.");
-              });
-            }}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            링크 복사
-          </button>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setInviteOpen((o) => !o)}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              초대
-            </button>
-            {inviteOpen && (
-              <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+
+      {menuOpen && (
+        <div className="absolute left-0 top-full z-30 mt-2 w-[min(92vw,26rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+          <div className="space-y-3">
+            <section className="space-y-2 rounded-lg border border-slate-100 p-2">
+              <h3 className="text-xs font-semibold tracking-wide text-slate-500">
+                보드 선택/편집
+              </h3>
+              <label className="block text-sm text-slate-700">
+                <span className="mb-1 block">보드</span>
+                <select
+                  key={selectKey}
+                  ref={selectRef}
+                  onChange={handleSelectBoard}
+                  defaultValue={currentBoardId ?? ""}
+                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                  disabled={isLoading}
+                >
+                  <option value="">(새 보드)</option>
+                  {boards.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.title || DEFAULT_TITLE}
+                      {(b as { visibility?: string }).visibility === "public"
+                        ? " (공개)"
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm text-slate-700">
+                <span className="mb-1 block">제목</span>
                 <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => {
-                    setInviteEmail(e.target.value);
-                    setInviteError(null);
-                  }}
-                  placeholder="이메일 입력"
-                  className="mb-2 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                  type="text"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  placeholder={DEFAULT_TITLE}
+                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
                 />
-                <div className="flex justify-end gap-1">
+              </label>
+              {currentBoardId && (
+                <label className="block text-sm text-slate-700">
+                  <span className="mb-1 block">공개 여부</span>
+                  <select
+                    value={editingVisibility}
+                    onChange={(e) =>
+                      setEditingVisibility(e.target.value as BoardVisibility)
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    disabled={!isOwner}
+                  >
+                    <option value="public">공개</option>
+                    <option value="private">비공개</option>
+                  </select>
+                </label>
+              )}
+            </section>
+
+            <section className="space-y-2 rounded-lg border border-slate-100 p-2">
+              <h3 className="text-xs font-semibold tracking-wide text-slate-500">
+                저장/관리
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saveMutation.isPending}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {saveMutation.isPending ? "저장 중…" : "저장"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNewBoard}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  새 보드
+                </button>
+                {isOwner && currentBoardId && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteBoard}
+                    disabled={deleteMutation.isPending}
+                    className="col-span-2 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    title="현재 보드를 삭제합니다"
+                  >
+                    {deleteMutation.isPending ? "삭제 중…" : "보드 삭제"}
+                  </button>
+                )}
+              </div>
+            </section>
+
+            {isOwner && currentBoard?.visibility === "private" && (
+              <section className="space-y-2 rounded-lg border border-slate-100 p-2">
+                <h3 className="text-xs font-semibold tracking-wide text-slate-500">
+                  공유/멤버
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => {
-                      setInviteOpen(false);
-                      setInviteError(null);
+                      const url = `${typeof window !== "undefined" ? window.location.origin : ""}/board/${currentBoardId}`;
+                      void navigator.clipboard.writeText(url).then(() => {
+                        alert("초대 링크가 복사되었습니다.");
+                      });
                     }}
-                    className="rounded px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    취소
+                    링크 복사
                   </button>
                   <button
                     type="button"
-                    onClick={handleInvite}
-                    disabled={inviteMutation.isPending}
-                    className="rounded bg-slate-700 px-2 py-1 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+                    onClick={() => {
+                      setInviteOpen((o) => !o);
+                      setJoinRequestsOpen(false);
+                    }}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    {inviteMutation.isPending ? "처리 중…" : "초대"}
+                    초대
                   </button>
                 </div>
-                {(inviteError || inviteMutation.isError) && (
-                  <p className="mt-1 text-xs text-red-600">
-                    {inviteError ?? String(inviteMutation.error?.message)}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setJoinRequestsOpen((o) => !o)}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              가입 요청{" "}
-              {joinRequests.length > 0 ? `(${joinRequests.length})` : ""}
-            </button>
-            {joinRequestsOpen && (
-              <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-64 overflow-auto rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
-                {joinRequests.length === 0 ? (
-                  <p className="text-sm text-slate-500">대기 중인 요청 없음</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {joinRequests.map((req) => (
-                      <li
-                        key={req.id}
-                        className="flex items-center justify-between gap-2 rounded border border-slate-100 p-2 text-sm"
+
+                {inviteOpen && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => {
+                        setInviteEmail(e.target.value);
+                        setInviteError(null);
+                      }}
+                      placeholder="이메일 입력"
+                      className="mb-2 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    />
+                    <div className="flex justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInviteOpen(false);
+                          setInviteError(null);
+                        }}
+                        className="rounded px-2 py-1 text-sm text-slate-600 hover:bg-slate-200"
                       >
-                        <span className="truncate text-slate-700">
-                          {req.user_id.slice(0, 8)}…
-                        </span>
-                        <span className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              acceptMutation.mutate({
-                                requestId: req.id,
-                                boardId: req.board_id,
-                                acceptedUserId: req.user_id,
-                              });
-                            }}
-                            disabled={acceptMutation.isPending}
-                            className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700 disabled:opacity-50"
-                          >
-                            수락
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              rejectMutation.mutate({
-                                requestId: req.id,
-                                boardId: req.board_id,
-                              });
-                            }}
-                            disabled={rejectMutation.isPending}
-                            className="rounded bg-slate-400 px-2 py-0.5 text-xs text-white hover:bg-slate-500 disabled:opacity-50"
-                          >
-                            거절
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleInvite}
+                        disabled={inviteMutation.isPending}
+                        className="rounded bg-slate-700 px-2 py-1 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {inviteMutation.isPending ? "처리 중…" : "초대"}
+                      </button>
+                    </div>
+                    {(inviteError || inviteMutation.isError) && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {inviteError ?? String(inviteMutation.error?.message)}
+                      </p>
+                    )}
+                  </div>
                 )}
-              </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJoinRequestsOpen((o) => !o);
+                    setInviteOpen(false);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  가입 요청{" "}
+                  {joinRequests.length > 0 ? `(${joinRequests.length})` : ""}
+                </button>
+
+                {joinRequestsOpen && (
+                  <div className="max-h-48 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
+                    {joinRequests.length === 0 ? (
+                      <p className="text-sm text-slate-500">
+                        대기 중인 요청 없음
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {joinRequests.map((req) => (
+                          <li
+                            key={req.id}
+                            className="flex items-center justify-between gap-2 rounded border border-slate-100 bg-white p-2 text-sm"
+                          >
+                            <span className="truncate text-slate-700">
+                              {req.user_id.slice(0, 8)}…
+                            </span>
+                            <span className="flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  acceptMutation.mutate({
+                                    requestId: req.id,
+                                    boardId: req.board_id,
+                                    acceptedUserId: req.user_id,
+                                  });
+                                }}
+                                disabled={acceptMutation.isPending}
+                                className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                              >
+                                수락
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  rejectMutation.mutate({
+                                    requestId: req.id,
+                                    boardId: req.board_id,
+                                  });
+                                }}
+                                disabled={rejectMutation.isPending}
+                                className="rounded bg-slate-400 px-2 py-0.5 text-xs text-white hover:bg-slate-500 disabled:opacity-50"
+                              >
+                                거절
+                              </button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {saveMutation.isError && (
+              <span className="block text-sm text-red-600" role="alert">
+                {String(saveMutation.error?.message)}
+              </span>
+            )}
+            {deleteMutation.isError && (
+              <span className="block text-sm text-red-600" role="alert">
+                {String(deleteMutation.error?.message)}
+              </span>
             )}
           </div>
-        </>
-      )}
-      {saveMutation.isError && (
-        <span className="text-sm text-red-600" role="alert">
-          {String(saveMutation.error?.message)}
-        </span>
-      )}
-      {deleteMutation.isError && (
-        <span className="text-sm text-red-600" role="alert">
-          {String(deleteMutation.error?.message)}
-        </span>
+        </div>
       )}
     </div>
   );

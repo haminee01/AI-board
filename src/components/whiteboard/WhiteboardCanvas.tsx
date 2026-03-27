@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Stage,
   Layer,
@@ -13,8 +19,14 @@ import {
 } from "react-konva";
 import type Konva from "konva";
 import { useBoardStore } from "@/stores/useBoardStore";
-import type { MindmapNode, ShapeData, ShapeType } from "@/stores/useBoardStore";
+import type {
+  DiscussionComment,
+  MindmapNode,
+  ShapeData,
+  ShapeType,
+} from "@/stores/useBoardStore";
 import { useWhiteboardRealtime } from "@/contexts/WhiteboardRealtimeContext";
+import { useAuth } from "@/lib/auth/auth-context";
 import {
   distancePointToSegment,
   getLineBoundingBox,
@@ -28,6 +40,14 @@ import { useMindmapGeneratorModalStore } from "@/stores/useMindmapGeneratorModal
 
 const STROKE_COLOR = "#1e293b";
 const STROKE_WIDTH = 2;
+const HIGHLIGHTER_STROKE_COLOR = "#fde047";
+const HIGHLIGHTER_STROKE_WIDTH = 16;
+const HIGHLIGHTER_OPACITY = 0.45;
+const FREETEXT_FONT_SIZE = 16;
+const NOTE_PADDING_X = 12;
+const NOTE_PADDING_Y = 10;
+const NOTE_MIN_WIDTH = 120;
+const NOTE_MIN_HEIGHT = 48;
 const CURSOR_RADIUS = 6;
 const ERASER_RADIUS = 24;
 /** 선택된 선 위에서 드래그 시작할 때 인식 반경 */
@@ -41,7 +61,63 @@ function generateLineId(): string {
   return `line-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function generateFreeTextId(): string {
+  return `freetext-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function generateCommentId(): string {
+  return `comment-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function generateReplyId(): string {
+  return `reply-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getNoteSize(
+  text: string,
+  fontSize: number,
+): { width: number; height: number } {
+  const lines = (text || "").split("\n");
+  const maxLine = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  const width = Math.max(
+    NOTE_MIN_WIDTH,
+    maxLine * fontSize * 0.56 + NOTE_PADDING_X * 2,
+  );
+  const height = Math.max(
+    NOTE_MIN_HEIGHT,
+    lines.length * fontSize * 1.45 + NOTE_PADDING_Y * 2,
+  );
+  return { width, height };
+}
+
+function getTextNodeBounds(n: MindmapNode): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} {
+  if (n.kind === "freetext") {
+    const fs = n.fontSize ?? FREETEXT_FONT_SIZE;
+    const { width: w, height: h } = getNoteSize(n.text, fs);
+    return { minX: n.x, minY: n.y, maxX: n.x + w, maxY: n.y + h };
+  }
+  return {
+    minX: n.x,
+    minY: n.y,
+    maxX: n.x + BTN_WIDTH,
+    maxY: n.y + BTN_HEIGHT,
+  };
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
 export function WhiteboardCanvas() {
+  const { user } = useAuth();
   const {
     lines,
     cursors,
@@ -55,6 +131,8 @@ export function WhiteboardCanvas() {
     removeShapesByIds,
     updateShape,
     setTextNodes,
+    addMindmapNodes,
+    updateTextNode,
     pushUndo,
     undo,
     redo,
@@ -67,6 +145,8 @@ export function WhiteboardCanvas() {
     broadcastShape,
     broadcastRemoveShapes,
     broadcastUpdateShape,
+    broadcastMindmapNodes,
+    broadcastUpdateTextNode,
     broadcastRemoveMindmapNode,
     clearMyCursor,
   } = useWhiteboardRealtime();
@@ -76,6 +156,31 @@ export function WhiteboardCanvas() {
   const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
   /** Shift+드래그로 선택된 도형 id 목록 */
   const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([]);
+  /** Shift+드래그로 선택된 텍스트 노드 id (자유 텍스트·마인드맵 버튼) */
+  const [selectedTextNodeIds, setSelectedTextNodeIds] = useState<string[]>([]);
+  type TextEditorState =
+    | {
+        mode: "new";
+        stageX: number;
+        stageY: number;
+      }
+    | { mode: "edit"; nodeId: string };
+  const [textEditor, setTextEditor] = useState<TextEditorState | null>(null);
+  const [draftText, setDraftText] = useState("");
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState(false);
+  const [editingNoteDraft, setEditingNoteDraft] = useState("");
+  const [commentDraft, setCommentDraft] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentDraft, setEditingCommentDraft] = useState("");
+  const [replyTargetCommentId, setReplyTargetCommentId] = useState<
+    string | null
+  >(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [editingReplyKey, setEditingReplyKey] = useState<string | null>(null);
+  const [editingReplyDraft, setEditingReplyDraft] = useState("");
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const skipTextEditorBlurCommitRef = useRef(false);
   /** Shift+드래그 중인 선택 영역 (x1,y1 시작점, x2,y2 현재 커서) */
   const [selectionRect, setSelectionRect] = useState<{
     x1: number;
@@ -118,6 +223,9 @@ export function WhiteboardCanvas() {
   const movingOriginalShapesByIdRef = useRef<
     Record<string, { x: number; y: number }>
   >({});
+  const movingOriginalTextByIdRef = useRef<
+    Record<string, { x: number; y: number }>
+  >({});
   const movingStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const selectionRectRef = useRef<{
     x1: number;
@@ -126,6 +234,12 @@ export function WhiteboardCanvas() {
     y2: number;
   } | null>(null);
   selectionRectRef.current = selectionRect;
+  const selectedLineIdsRef = useRef<string[]>([]);
+  const selectedShapeIdsRef = useRef<string[]>([]);
+  selectedLineIdsRef.current = selectedLineIds;
+  selectedShapeIdsRef.current = selectedShapeIds;
+  const selectedTextNodeIdsRef = useRef<string[]>([]);
+  selectedTextNodeIdsRef.current = selectedTextNodeIds;
 
   const getPointerPosition = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -204,17 +318,48 @@ export function WhiteboardCanvas() {
     [],
   );
 
-  /** stage 좌표 (x,y)가 마인드맵 버튼 안인 노드 반환 (겹치면 맨 위 = 배열 마지막) */
+  /** stage 좌표 (x,y)가 마인드맵 버튼 안인 노드 반환 (마인드맵 전용) */
   const getMindmapNodeAtStagePos = useCallback(
     (stageX: number, stageY: number): MindmapNode | null => {
       const nodes = useBoardStore.getState().textNodes;
       for (let i = nodes.length - 1; i >= 0; i--) {
         const n = nodes[i]!;
+        if (n.kind === "freetext") continue;
+        const b = getTextNodeBounds(n);
         if (
-          stageX >= n.x &&
-          stageX < n.x + BTN_WIDTH &&
-          stageY >= n.y &&
-          stageY < n.y + BTN_HEIGHT
+          pointInRect(
+            stageX,
+            stageY,
+            b.minX,
+            b.minY,
+            b.maxX - b.minX,
+            b.maxY - b.minY,
+          )
+        ) {
+          return n;
+        }
+      }
+      return null;
+    },
+    [],
+  );
+
+  const getEditableTextNodeAtStagePos = useCallback(
+    (stageX: number, stageY: number): MindmapNode | null => {
+      const nodes = useBoardStore.getState().textNodes;
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i]!;
+        if (n.kind !== "freetext") continue;
+        const b = getTextNodeBounds(n);
+        if (
+          pointInRect(
+            stageX,
+            stageY,
+            b.minX,
+            b.minY,
+            b.maxX - b.minX,
+            b.maxY - b.minY,
+          )
         ) {
           return n;
         }
@@ -295,6 +440,52 @@ export function WhiteboardCanvas() {
     [],
   );
 
+  const getTextNodeIdsInRect = useCallback(
+    (x1: number, y1: number, x2: number, y2: number): string[] => {
+      let minX = Math.min(x1, x2);
+      let maxX = Math.max(x1, x2);
+      let minY = Math.min(y1, y2);
+      let maxY = Math.max(y1, y2);
+      if (maxX - minX < 4 && maxY - minY < 4) {
+        const cx = (x1 + x2) / 2;
+        const cy = (y1 + y2) / 2;
+        const pad = MOVE_HIT_RADIUS;
+        minX = cx - pad;
+        maxX = cx + pad;
+        minY = cy - pad;
+        maxY = cy + pad;
+      }
+      const sel = { minX, minY, maxX, maxY };
+      const ids: string[] = [];
+      const nodes = useBoardStore.getState().textNodes;
+      for (const n of nodes) {
+        if (!n.id) continue;
+        const b = getTextNodeBounds(n);
+        const box = { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY };
+        if (rectsIntersect(sel, box)) ids.push(n.id);
+      }
+      return ids;
+    },
+    [],
+  );
+
+  const findSelectedTextNodeIdAt = useCallback(
+    (x: number, y: number, selectedIds: string[]): string | undefined => {
+      if (selectedIds.length === 0) return undefined;
+      const set = new Set(selectedIds);
+      const nodes = useBoardStore.getState().textNodes;
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i]!;
+        if (!set.has(n.id)) continue;
+        const b = getTextNodeBounds(n);
+        if (pointInRect(x, y, b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY))
+          return n.id;
+      }
+      return undefined;
+    },
+    [],
+  );
+
   const findShapeIdsUnder = useCallback((x: number, y: number): string[] => {
     const ids: string[] = [];
     const shapesSnapshot = useBoardStore.getState().shapes;
@@ -366,6 +557,9 @@ export function WhiteboardCanvas() {
         point = getStagePosFromEvent(stage, e.evt.clientX, e.evt.clientY);
       if (!point || point.length < 2) return;
       const shift = e.evt.shiftKey;
+      const editableNode = getEditableTextNodeAtStagePos(point[0], point[1]);
+      if (editableNode?.kind === "freetext") setActiveNoteId(editableNode.id);
+      else if (tool !== "text") setActiveNoteId(null);
       if (tool === "eraser" && !shift) {
         isErasing.current = true;
         eraserPushedUndo.current = false;
@@ -385,6 +579,21 @@ export function WhiteboardCanvas() {
         }
         return;
       }
+      // 텍스트 도구가 아닐 때 텍스트 박스를 바로 드래그 이동
+      if (editableNode?.kind === "freetext" && !shift && tool !== "text") {
+        pushUndo();
+        setSelectedLineIds([]);
+        setSelectedShapeIds([]);
+        setSelectedTextNodeIds([editableNode.id]);
+        movingOriginalPointsByLineIdRef.current = {};
+        movingOriginalShapesByIdRef.current = {};
+        movingOriginalTextByIdRef.current = {
+          [editableNode.id]: { x: editableNode.x, y: editableNode.y },
+        };
+        movingStartRef.current = { x: point[0], y: point[1] };
+        isMovingSelectionRef.current = true;
+        return;
+      }
       if (shift) {
         isSelectingRef.current = true;
         setSelectionRect({
@@ -395,14 +604,23 @@ export function WhiteboardCanvas() {
         });
         return;
       }
-      if (selectedLineIds.length > 0 || selectedShapeIds.length > 0) {
+      if (
+        selectedLineIds.length > 0 ||
+        selectedShapeIds.length > 0 ||
+        selectedTextNodeIds.length > 0
+      ) {
         const hitLineId = findLineIdAt(point[0], point[1]);
         const hitShapeId = findShapeIdAt(point[0], point[1]);
+        const hitSelectedText = findSelectedTextNodeIdAt(
+          point[0],
+          point[1],
+          selectedTextNodeIds,
+        );
         const hitSelectedLine =
           hitLineId && selectedLineIds.includes(hitLineId);
         const hitSelectedShape =
           hitShapeId && selectedShapeIds.includes(hitShapeId);
-        if (hitSelectedLine || hitSelectedShape) {
+        if (hitSelectedLine || hitSelectedShape || hitSelectedText) {
           pushUndo();
           const linesSnapshot = useBoardStore.getState().lines;
           const lineById: Record<string, number[]> = {};
@@ -416,8 +634,16 @@ export function WhiteboardCanvas() {
             const s = shapesSnapshot.find((sh) => sh.id === id);
             if (s) shapeById[id] = { x: s.x, y: s.y };
           }
+          const textById: Record<string, { x: number; y: number }> = {};
+          for (const id of selectedTextNodeIds) {
+            const n = useBoardStore
+              .getState()
+              .textNodes.find((t) => t.id === id);
+            if (n) textById[id] = { x: n.x, y: n.y };
+          }
           movingOriginalPointsByLineIdRef.current = lineById;
           movingOriginalShapesByIdRef.current = shapeById;
+          movingOriginalTextByIdRef.current = textById;
           movingStartRef.current = { x: point[0], y: point[1] };
           isMovingSelectionRef.current = true;
           return;
@@ -425,6 +651,17 @@ export function WhiteboardCanvas() {
       }
       setSelectedLineIds([]);
       setSelectedShapeIds([]);
+      setSelectedTextNodeIds([]);
+      if (tool === "text" && !shift && e.evt.button === 0) {
+        if (editableNode?.kind === "freetext") {
+          setTextEditor({ mode: "edit", nodeId: editableNode.id });
+          setDraftText(editableNode.text);
+        } else {
+          setTextEditor({ mode: "new", stageX: point[0], stageY: point[1] });
+          setDraftText("");
+        }
+        return;
+      }
       if (tool === "rect" || tool === "ellipse" || tool === "triangle") {
         isDrawingShapeRef.current = true;
         shapeStartRef.current = { x: point[0], y: point[1] };
@@ -437,7 +674,7 @@ export function WhiteboardCanvas() {
         });
         return;
       }
-      if (tool === "pen") {
+      if (tool === "pen" || tool === "highlighter") {
         isDrawing.current = true;
         setCurrentPoints(point);
       }
@@ -449,10 +686,13 @@ export function WhiteboardCanvas() {
       tool,
       selectedLineIds,
       selectedShapeIds,
+      selectedTextNodeIds,
       findLineIdsUnder,
       findLineIdAt,
       findShapeIdsUnder,
       findShapeIdAt,
+      findSelectedTextNodeIdAt,
+      getEditableTextNodeAtStagePos,
       pushUndo,
       removeLinesByIds,
       removeShapesByIds,
@@ -481,6 +721,13 @@ export function WhiteboardCanvas() {
           const y = orig.y + dy;
           updateShape(shapeId, { x, y });
           broadcastUpdateShape(shapeId, x, y);
+        }
+        const textById = movingOriginalTextByIdRef.current;
+        for (const [nodeId, orig] of Object.entries(textById)) {
+          const x = orig.x + dx;
+          const y = orig.y + dy;
+          updateTextNode(nodeId, { x, y });
+          broadcastUpdateTextNode(nodeId, { x, y });
         }
         return;
       }
@@ -529,11 +776,18 @@ export function WhiteboardCanvas() {
       broadcastCursor,
       tool,
       findLineIdsUnder,
+      findShapeIdsUnder,
       pushUndo,
       removeLinesByIds,
+      removeShapesByIds,
       broadcastRemoveLines,
+      broadcastRemoveShapes,
       updateLine,
       broadcastUpdateLine,
+      updateShape,
+      broadcastUpdateShape,
+      updateTextNode,
+      broadcastUpdateTextNode,
     ],
   );
 
@@ -541,11 +795,21 @@ export function WhiteboardCanvas() {
     const points = currentPointsRef.current;
     if (points.length >= 4) {
       pushUndo();
-      const line = {
-        id: generateLineId(),
-        points: [...points],
-        color: STROKE_COLOR,
-      };
+      const drawingTool = useBoardStore.getState().tool;
+      const line =
+        drawingTool === "highlighter"
+          ? {
+              id: generateLineId(),
+              points: [...points],
+              color: HIGHLIGHTER_STROKE_COLOR,
+              strokeWidth: HIGHLIGHTER_STROKE_WIDTH,
+              opacity: HIGHLIGHTER_OPACITY,
+            }
+          : {
+              id: generateLineId(),
+              points: [...points],
+              color: STROKE_COLOR,
+            };
       addLine(line);
       broadcastLine(line);
     }
@@ -587,6 +851,9 @@ export function WhiteboardCanvas() {
         setSelectedShapeIds(
           getShapeIdsInRect(rect.x1, rect.y1, rect.x2, rect.y2),
         );
+        setSelectedTextNodeIds(
+          getTextNodeIdsInRect(rect.x1, rect.y1, rect.x2, rect.y2),
+        );
       }
       setSelectionRect(null);
       return;
@@ -595,6 +862,7 @@ export function WhiteboardCanvas() {
       isMovingSelectionRef.current = false;
       movingOriginalPointsByLineIdRef.current = {};
       movingOriginalShapesByIdRef.current = {};
+      movingOriginalTextByIdRef.current = {};
       return;
     }
     if (tool === "eraser") {
@@ -615,6 +883,7 @@ export function WhiteboardCanvas() {
     pushUndo,
     addShape,
     broadcastShape,
+    getTextNodeIdsInRect,
   ]);
 
   /** DOM contextmenu: 마인드맵 버튼 위면 기본 메뉴 차단 후 커스텀 메뉴 표시 */
@@ -644,6 +913,7 @@ export function WhiteboardCanvas() {
     isMovingSelectionRef.current = false;
     movingOriginalPointsByLineIdRef.current = {};
     movingOriginalShapesByIdRef.current = {};
+    movingOriginalTextByIdRef.current = {};
     setSelectionRect(null);
     isErasing.current = false;
     if (isDrawing.current) {
@@ -655,20 +925,229 @@ export function WhiteboardCanvas() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.ctrlKey) return;
-      if (e.key === "z" || e.key === "y") {
-        if (e.shiftKey) {
-          redo();
-          e.preventDefault();
-        } else {
-          undo();
-          e.preventDefault();
-        }
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      // Ctrl+Y / Cmd+Shift+Z(일부 레이아웃): 다시 실행
+      if (k === "y") {
+        redo();
+        e.preventDefault();
+        return;
+      }
+      if (k === "z") {
+        if (e.shiftKey) redo();
+        else undo();
+        e.preventDefault();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [undo, redo]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Backspace" && e.key !== "Delete") return;
+      if (isSelectingRef.current) return;
+      if (isEditableKeyboardTarget(e.target)) return;
+      const lineIds = selectedLineIdsRef.current;
+      const shapeIds = selectedShapeIdsRef.current;
+      const textIds = selectedTextNodeIdsRef.current;
+      if (lineIds.length === 0 && shapeIds.length === 0 && textIds.length === 0)
+        return;
+      e.preventDefault();
+      pushUndo();
+      if (lineIds.length > 0) {
+        removeLinesByIds(lineIds);
+        broadcastRemoveLines(lineIds);
+      }
+      if (shapeIds.length > 0) {
+        removeShapesByIds(shapeIds);
+        broadcastRemoveShapes(shapeIds);
+      }
+      if (textIds.length > 0) {
+        const cur = useBoardStore.getState().textNodes;
+        setTextNodes(cur.filter((n) => !textIds.includes(n.id)));
+        for (const id of textIds) broadcastRemoveMindmapNode(id);
+      }
+      setSelectedLineIds([]);
+      setSelectedShapeIds([]);
+      setSelectedTextNodeIds([]);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    pushUndo,
+    removeLinesByIds,
+    removeShapesByIds,
+    broadcastRemoveLines,
+    broadcastRemoveShapes,
+    setTextNodes,
+    broadcastRemoveMindmapNode,
+  ]);
+
+  const commitTextEditor = useCallback(() => {
+    if (!textEditor) return;
+    const t = draftText.trim();
+    if (textEditor.mode === "new") {
+      if (t) {
+        pushUndo();
+        const node: MindmapNode = {
+          id: generateFreeTextId(),
+          text: t,
+          x: textEditor.stageX,
+          y: textEditor.stageY,
+          kind: "freetext",
+          fontSize: FREETEXT_FONT_SIZE,
+          comments: [],
+        };
+        addMindmapNodes([node]);
+        broadcastMindmapNodes([node]);
+        setActiveNoteId(node.id);
+      }
+    } else {
+      pushUndo();
+      if (!t) {
+        const cur = useBoardStore.getState().textNodes;
+        setTextNodes(cur.filter((n) => n.id !== textEditor.nodeId));
+        broadcastRemoveMindmapNode(textEditor.nodeId);
+      } else {
+        updateTextNode(textEditor.nodeId, { text: t });
+        broadcastUpdateTextNode(textEditor.nodeId, { text: t });
+      }
+    }
+    setTextEditor(null);
+  }, [
+    textEditor,
+    draftText,
+    pushUndo,
+    addMindmapNodes,
+    broadcastMindmapNodes,
+    setTextNodes,
+    broadcastRemoveMindmapNode,
+    updateTextNode,
+    broadcastUpdateTextNode,
+    setActiveNoteId,
+  ]);
+
+  useEffect(() => {
+    if (!textEditor) return;
+    const id = requestAnimationFrame(() => textAreaRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [textEditor]);
+
+  const textEditorStyle = useMemo((): React.CSSProperties | null => {
+    if (!textEditor) return null;
+    const stage = stageRef.current;
+    if (!stage) {
+      return { position: "fixed", left: 8, top: 8, zIndex: 50, minWidth: 140 };
+    }
+    const rect = stage.container().getBoundingClientRect();
+    const scaleX = rect.width / stage.width();
+    const scaleY = rect.height / stage.height();
+    let sx: number;
+    let sy: number;
+    if (textEditor.mode === "new") {
+      sx = textEditor.stageX;
+      sy = textEditor.stageY;
+    } else {
+      const n = textNodes.find((x) => x.id === textEditor.nodeId);
+      if (!n)
+        return {
+          position: "fixed",
+          left: rect.left,
+          top: rect.top,
+          zIndex: 50,
+          minWidth: 140,
+        };
+      sx = n.x;
+      sy = n.y;
+    }
+    return {
+      position: "fixed",
+      left: rect.left + sx * scaleX,
+      top: rect.top + sy * scaleY,
+      zIndex: 50,
+      minWidth: 140,
+    };
+  }, [textEditor, textNodes]);
+
+  const myName = useMemo(() => {
+    if (!user) return "익명";
+    const name = user.user_metadata?.full_name;
+    if (name && String(name).trim()) return String(name).trim();
+    if (user.email) return user.email.split("@")[0] ?? "익명";
+    return user.id?.slice(0, 8) ?? "익명";
+  }, [user]);
+
+  const activeNote = useMemo(
+    () =>
+      textNodes.find((n) => n.id === activeNoteId && n.kind === "freetext") ??
+      null,
+    [activeNoteId, textNodes],
+  );
+
+  useEffect(() => {
+    setEditingNoteText(false);
+    setEditingNoteDraft("");
+    setEditingCommentId(null);
+    setEditingCommentDraft("");
+    setEditingReplyKey(null);
+    setEditingReplyDraft("");
+  }, [activeNoteId]);
+
+  const updateNoteComments = useCallback(
+    (noteId: string, nextComments: DiscussionComment[]) => {
+      pushUndo();
+      updateTextNode(noteId, { comments: nextComments });
+      broadcastUpdateTextNode(noteId, { comments: nextComments });
+    },
+    [pushUndo, updateTextNode, broadcastUpdateTextNode],
+  );
+
+  const addComment = useCallback(() => {
+    if (!activeNote || !commentDraft.trim()) return;
+    const nextComments: DiscussionComment[] = [
+      ...(activeNote.comments ?? []),
+      {
+        id: generateCommentId(),
+        text: commentDraft.trim(),
+        authorName: myName,
+        createdAt: new Date().toISOString(),
+        replies: [],
+      },
+    ];
+    updateNoteComments(activeNote.id, nextComments);
+    setCommentDraft("");
+  }, [activeNote, commentDraft, myName, updateNoteComments]);
+
+  const addReply = useCallback(() => {
+    if (!activeNote || !replyTargetCommentId || !replyDraft.trim()) return;
+    const nextComments = (activeNote.comments ?? []).map((c) =>
+      c.id === replyTargetCommentId
+        ? {
+            ...c,
+            replies: [
+              ...(c.replies ?? []),
+              {
+                id: generateReplyId(),
+                text: replyDraft.trim(),
+                authorName: myName,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }
+        : c,
+    );
+    updateNoteComments(activeNote.id, nextComments);
+    setReplyDraft("");
+    setReplyTargetCommentId(null);
+  }, [
+    activeNote,
+    replyTargetCommentId,
+    replyDraft,
+    myName,
+    updateNoteComments,
+  ]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -691,6 +1170,36 @@ export function WhiteboardCanvas() {
         style={{ position: "relative" }}
         onContextMenu={handleNativeContextMenu}
       >
+        {textEditor && textEditorStyle ? (
+          <textarea
+            ref={textAreaRef}
+            value={draftText}
+            onChange={(e) => setDraftText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                skipTextEditorBlurCommitRef.current = true;
+                setTextEditor(null);
+                return;
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                textAreaRef.current?.blur();
+              }
+            }}
+            onBlur={() => {
+              if (skipTextEditorBlurCommitRef.current) {
+                skipTextEditorBlurCommitRef.current = false;
+                return;
+              }
+              commitTextEditor();
+            }}
+            className="rounded-md border border-slate-400 bg-white px-2 py-1 text-sm text-slate-900 shadow-lg outline-none focus:border-slate-600 focus:ring-1 focus:ring-slate-500"
+            style={textEditorStyle}
+            rows={2}
+            aria-label="화이트보드 텍스트 입력"
+          />
+        ) : null}
         <Stage
           ref={(node) => {
             stageRef.current = node ?? null;
@@ -709,18 +1218,36 @@ export function WhiteboardCanvas() {
                 key={line.id ?? i}
                 points={line.points}
                 stroke={line.color}
-                strokeWidth={STROKE_WIDTH}
+                strokeWidth={line.strokeWidth ?? STROKE_WIDTH}
+                opacity={line.opacity ?? 1}
                 lineCap="round"
                 lineJoin="round"
+                globalCompositeOperation={
+                  line.opacity != null && line.opacity < 1
+                    ? "multiply"
+                    : "source-over"
+                }
               />
             ))}
             {currentPoints.length >= 2 && (
               <Line
                 points={currentPoints}
-                stroke={STROKE_COLOR}
-                strokeWidth={STROKE_WIDTH}
+                stroke={
+                  tool === "highlighter"
+                    ? HIGHLIGHTER_STROKE_COLOR
+                    : STROKE_COLOR
+                }
+                strokeWidth={
+                  tool === "highlighter"
+                    ? HIGHLIGHTER_STROKE_WIDTH
+                    : STROKE_WIDTH
+                }
+                opacity={tool === "highlighter" ? HIGHLIGHTER_OPACITY : 1}
                 lineCap="round"
                 lineJoin="round"
+                globalCompositeOperation={
+                  tool === "highlighter" ? "multiply" : "source-over"
+                }
               />
             )}
             {/* Shift+드래그 중: 선택 영역 사각형 (점선) */}
@@ -738,7 +1265,9 @@ export function WhiteboardCanvas() {
             )}
             {/* 선택 확정 후: 선택된 선들의 경계 상자 (어디까지 선택됐는지 표시) */}
             {!selectionRect &&
-              (selectedLineIds.length > 0 || selectedShapeIds.length > 0) &&
+              (selectedLineIds.length > 0 ||
+                selectedShapeIds.length > 0 ||
+                selectedTextNodeIds.length > 0) &&
               (() => {
                 let minX = Infinity,
                   minY = Infinity,
@@ -764,6 +1293,15 @@ export function WhiteboardCanvas() {
                   if (sy < minY) minY = sy;
                   if (sx2 > maxX) maxX = sx2;
                   if (sy2 > maxY) maxY = sy2;
+                }
+                const textSet = new Set(selectedTextNodeIds);
+                for (const n of textNodes) {
+                  if (!textSet.has(n.id)) continue;
+                  const b = getTextNodeBounds(n);
+                  if (b.minX < minX) minX = b.minX;
+                  if (b.minY < minY) minY = b.minY;
+                  if (b.maxX > maxX) maxX = b.maxX;
+                  if (b.maxY > maxY) maxY = b.maxY;
                 }
                 if (minX === Infinity) return null;
                 const pad = 6;
@@ -897,54 +1435,429 @@ export function WhiteboardCanvas() {
           </Layer>
           {/* 마인드맵 노드 레이어를 맨 위에 배치 - getIntersection이 버튼을 찾도록 */}
           <Layer listening={true}>
-            {textNodes.map((node) => (
-              <Group key={node.id} x={node.x} y={node.y} listening={true}>
-                <Rect
-                  name="mindmap-node-rect"
-                  width={BTN_WIDTH}
-                  height={BTN_HEIGHT}
-                  fill={
-                    hoveredMindmapNodeId === node.id ? "#e2e8f0" : "#f9fafb"
-                  }
-                  stroke={
-                    hoveredMindmapNodeId === node.id ? "#64748b" : "#cbd5e1"
-                  }
-                  strokeWidth={1}
-                  cornerRadius={4}
-                  listening={true}
-                  onMouseEnter={(e) => {
-                    const stage = e.target.getStage();
-                    const container = stage?.container();
-                    if (container) container.style.cursor = "pointer";
-                    setHoveredMindmapNodeId(node.id);
-                  }}
-                  onMouseLeave={(e) => {
-                    const stage = e.target.getStage();
-                    const container = stage?.container();
-                    if (container) container.style.cursor = "default";
-                    setHoveredMindmapNodeId((prev) =>
-                      prev === node.id ? null : prev,
+            {textNodes.map((node) =>
+              node.kind === "freetext" ? (
+                <Group key={node.id} x={node.x} y={node.y} listening={true}>
+                  {(() => {
+                    const fs = node.fontSize ?? FREETEXT_FONT_SIZE;
+                    const size = getNoteSize(node.text, fs);
+                    const count = node.comments?.length ?? 0;
+                    return (
+                      <React.Fragment>
+                        <Rect
+                          width={size.width}
+                          height={size.height}
+                          fill="#ffffff"
+                          stroke="#cbd5e1"
+                          strokeWidth={1}
+                          cornerRadius={10}
+                          listening={true}
+                        />
+                        <Text
+                          x={NOTE_PADDING_X}
+                          y={NOTE_PADDING_Y}
+                          text={node.text}
+                          fontSize={fs}
+                          fill="#0f172a"
+                          fontFamily="system-ui, -apple-system, sans-serif"
+                          listening={false}
+                          width={size.width - NOTE_PADDING_X * 2}
+                        />
+                        <Text
+                          x={8}
+                          y={size.height + 4}
+                          text={`댓글 ${count}`}
+                          fontSize={12}
+                          fill="#475569"
+                          listening={false}
+                        />
+                      </React.Fragment>
                     );
-                  }}
-                />
-                <Text
-                  x={0}
-                  y={0}
-                  text={node.text}
-                  fontSize={12}
-                  fill="#1e293b"
-                  listening={false}
-                  width={BTN_WIDTH}
-                  height={BTN_HEIGHT}
-                  align="center"
-                  verticalAlign="middle"
-                  ellipsis
-                />
-              </Group>
-            ))}
+                  })()}
+                </Group>
+              ) : (
+                <Group key={node.id} x={node.x} y={node.y} listening={true}>
+                  <Rect
+                    name="mindmap-node-rect"
+                    width={BTN_WIDTH}
+                    height={BTN_HEIGHT}
+                    fill={
+                      hoveredMindmapNodeId === node.id ? "#e2e8f0" : "#f9fafb"
+                    }
+                    stroke={
+                      hoveredMindmapNodeId === node.id ? "#64748b" : "#cbd5e1"
+                    }
+                    strokeWidth={1}
+                    cornerRadius={4}
+                    listening={true}
+                    onMouseEnter={(e) => {
+                      const stage = e.target.getStage();
+                      const container = stage?.container();
+                      if (container) container.style.cursor = "pointer";
+                      setHoveredMindmapNodeId(node.id);
+                    }}
+                    onMouseLeave={(e) => {
+                      const stage = e.target.getStage();
+                      const container = stage?.container();
+                      if (container) container.style.cursor = "default";
+                      setHoveredMindmapNodeId((prev) =>
+                        prev === node.id ? null : prev,
+                      );
+                    }}
+                  />
+                  <Text
+                    x={0}
+                    y={0}
+                    text={node.text}
+                    fontSize={12}
+                    fill="#1e293b"
+                    listening={false}
+                    width={BTN_WIDTH}
+                    height={BTN_HEIGHT}
+                    align="center"
+                    verticalAlign="middle"
+                    ellipsis
+                  />
+                </Group>
+              ),
+            )}
           </Layer>
         </Stage>
       </div>
+      {activeNote && (
+        <aside className="fixed right-4 top-16 z-40 w-80 max-h-[calc(100vh-5rem)] overflow-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-800">
+              텍스트/댓글
+            </h3>
+            <button
+              type="button"
+              className="text-xs text-slate-500 hover:text-slate-700"
+              onClick={() => setActiveNoteId(null)}
+            >
+              닫기
+            </button>
+          </div>
+          <div className="mb-3 rounded-lg border border-slate-200 p-2">
+            <p className="mb-2 text-xs text-slate-500">텍스트</p>
+            {editingNoteText ? (
+              <textarea
+                value={editingNoteDraft}
+                onChange={(e) => setEditingNoteDraft(e.target.value)}
+                rows={4}
+                className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              />
+            ) : (
+              <p className="whitespace-pre-wrap text-sm text-slate-800">
+                {activeNote.text}
+              </p>
+            )}
+            <div className="mt-2 flex gap-2">
+              {editingNoteText ? (
+                <>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                    onClick={() => {
+                      setEditingNoteText(false);
+                      setEditingNoteDraft("");
+                    }}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded bg-slate-800 px-2 py-1 text-xs text-white hover:bg-slate-700"
+                    onClick={() => {
+                      pushUndo();
+                      updateTextNode(activeNote.id, { text: editingNoteDraft });
+                      broadcastUpdateTextNode(activeNote.id, {
+                        text: editingNoteDraft,
+                      });
+                      setEditingNoteText(false);
+                      setEditingNoteDraft("");
+                    }}
+                  >
+                    저장
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    setEditingNoteText(true);
+                    setEditingNoteDraft(activeNote.text);
+                  }}
+                >
+                  텍스트 수정
+                </button>
+              )}
+              <button
+                type="button"
+                className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                onClick={() => {
+                  const ok = window.confirm("이 텍스트와 댓글을 삭제할까요?");
+                  if (!ok) return;
+                  pushUndo();
+                  const cur = useBoardStore.getState().textNodes;
+                  setTextNodes(cur.filter((n) => n.id !== activeNote.id));
+                  broadcastRemoveMindmapNode(activeNote.id);
+                  setActiveNoteId(null);
+                }}
+              >
+                텍스트 삭제
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-slate-500">댓글</p>
+            {(activeNote.comments ?? []).map((c) => (
+              <div
+                key={c.id}
+                className="rounded-lg border border-slate-200 p-2"
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-xs text-slate-500">
+                    {c.authorName} · {new Date(c.createdAt).toLocaleString()}
+                  </span>
+                  <span className="flex gap-2">
+                    <button
+                      type="button"
+                      className="text-xs text-slate-600 hover:text-slate-900"
+                      onClick={() => {
+                        setEditingCommentId(c.id);
+                        setEditingCommentDraft(c.text);
+                      }}
+                    >
+                      수정
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-red-600 hover:text-red-700"
+                      onClick={() => {
+                        const nextComments = (activeNote.comments ?? []).filter(
+                          (x) => x.id !== c.id,
+                        );
+                        updateNoteComments(activeNote.id, nextComments);
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </span>
+                </div>
+                {editingCommentId === c.id ? (
+                  <div className="space-y-1">
+                    <textarea
+                      value={editingCommentDraft}
+                      onChange={(e) => setEditingCommentDraft(e.target.value)}
+                      rows={3}
+                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                    />
+                    <div className="flex justify-end gap-1">
+                      <button
+                        type="button"
+                        className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        onClick={() => {
+                          setEditingCommentId(null);
+                          setEditingCommentDraft("");
+                        }}
+                      >
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded bg-slate-800 px-2 py-1 text-xs text-white"
+                        onClick={() => {
+                          const nextComments = (activeNote.comments ?? []).map(
+                            (x) =>
+                              x.id === c.id
+                                ? { ...x, text: editingCommentDraft }
+                                : x,
+                          );
+                          updateNoteComments(activeNote.id, nextComments);
+                          setEditingCommentId(null);
+                          setEditingCommentDraft("");
+                        }}
+                      >
+                        저장
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm text-slate-800">
+                    {c.text}
+                  </p>
+                )}
+                {(c.replies ?? []).length > 0 && (
+                  <ul className="mt-2 space-y-1 border-l border-slate-200 pl-2">
+                    {(c.replies ?? []).map((r) => (
+                      <li key={r.id} className="rounded bg-slate-50 p-1.5">
+                        <div className="mb-0.5 flex items-center justify-between">
+                          <span className="text-[11px] text-slate-500">
+                            {r.authorName} ·{" "}
+                            {new Date(r.createdAt).toLocaleString()}
+                          </span>
+                          <span className="flex gap-2">
+                            <button
+                              type="button"
+                              className="text-[11px] text-slate-600 hover:text-slate-900"
+                              onClick={() => {
+                                setEditingReplyKey(`${c.id}:${r.id}`);
+                                setEditingReplyDraft(r.text);
+                              }}
+                            >
+                              수정
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[11px] text-red-600 hover:text-red-700"
+                              onClick={() => {
+                                const nextComments = (
+                                  activeNote.comments ?? []
+                                ).map((x) =>
+                                  x.id !== c.id
+                                    ? x
+                                    : {
+                                        ...x,
+                                        replies: (x.replies ?? []).filter(
+                                          (y) => y.id !== r.id,
+                                        ),
+                                      },
+                                );
+                                updateNoteComments(activeNote.id, nextComments);
+                              }}
+                            >
+                              삭제
+                            </button>
+                          </span>
+                        </div>
+                        {editingReplyKey === `${c.id}:${r.id}` ? (
+                          <div className="space-y-1">
+                            <textarea
+                              value={editingReplyDraft}
+                              onChange={(e) =>
+                                setEditingReplyDraft(e.target.value)
+                              }
+                              rows={2}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            />
+                            <div className="flex justify-end gap-1">
+                              <button
+                                type="button"
+                                className="rounded px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-100"
+                                onClick={() => {
+                                  setEditingReplyKey(null);
+                                  setEditingReplyDraft("");
+                                }}
+                              >
+                                취소
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded bg-slate-800 px-2 py-0.5 text-[11px] text-white"
+                                onClick={() => {
+                                  const nextComments = (
+                                    activeNote.comments ?? []
+                                  ).map((x) =>
+                                    x.id !== c.id
+                                      ? x
+                                      : {
+                                          ...x,
+                                          replies: (x.replies ?? []).map((y) =>
+                                            y.id === r.id
+                                              ? {
+                                                  ...y,
+                                                  text: editingReplyDraft,
+                                                }
+                                              : y,
+                                          ),
+                                        },
+                                  );
+                                  updateNoteComments(
+                                    activeNote.id,
+                                    nextComments,
+                                  );
+                                  setEditingReplyKey(null);
+                                  setEditingReplyDraft("");
+                                }}
+                              >
+                                저장
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap text-xs text-slate-700">
+                            {r.text}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-2">
+                  {replyTargetCommentId === c.id ? (
+                    <div className="space-y-1">
+                      <textarea
+                        value={replyDraft}
+                        onChange={(e) => setReplyDraft(e.target.value)}
+                        rows={2}
+                        className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                        placeholder="답글 입력"
+                      />
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                          onClick={() => {
+                            setReplyTargetCommentId(null);
+                            setReplyDraft("");
+                          }}
+                        >
+                          취소
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded bg-slate-800 px-2 py-1 text-xs text-white"
+                          onClick={addReply}
+                        >
+                          답글 등록
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-xs text-slate-600 hover:text-slate-900"
+                      onClick={() => setReplyTargetCommentId(c.id)}
+                    >
+                      답글 달기
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <textarea
+              value={commentDraft}
+              onChange={(e) => setCommentDraft(e.target.value)}
+              rows={3}
+              className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              placeholder="댓글 입력"
+            />
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white hover:bg-slate-700"
+                onClick={addComment}
+              >
+                댓글 등록
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
       {contextMenu && (
         <div
           ref={contextMenuRef}

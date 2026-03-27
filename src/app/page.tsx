@@ -16,9 +16,7 @@ export default function HomePage() {
           <ToolToggle />
           <BoardToolbar />
           <MindmapGeneratorLauncher />
-          <span className="text-xs text-slate-400">
-            Ctrl+Z 실행 취소 · Ctrl+Shift+Z 다시 실행
-          </span>
+          <span className="text-xs text-slate-400"></span>
         </section>
         <section className="flex-1 overflow-hidden">
           <WhiteboardCanvasWrapper />

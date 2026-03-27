@@ -19,6 +19,7 @@ const BROADCAST_EVENT_UPDATE_LINE = "updateLine";
 const BROADCAST_EVENT_SHAPE = "shape";
 const BROADCAST_EVENT_REMOVE_SHAPES = "removeShapes";
 const BROADCAST_EVENT_UPDATE_SHAPE = "updateShape";
+const BROADCAST_EVENT_UPDATE_TEXT_NODE = "updateTextNode";
 const CURSOR_THROTTLE_MS = 80;
 
 const CURSOR_COLORS = [
@@ -72,6 +73,13 @@ type UpdateLinePayload = { lineId: string; points: number[] };
 type ShapePayload = { shape: ShapeData };
 type RemoveShapesPayload = { shapeIds: string[] };
 type UpdateShapePayload = { shapeId: string; x: number; y: number };
+type UpdateTextNodePayload = {
+  nodeId: string;
+  x?: number;
+  y?: number;
+  text?: string;
+  comments?: MindmapNode["comments"];
+};
 
 export function useRealtimeWhiteboard() {
   const { user } = useAuth();
@@ -85,6 +93,7 @@ export function useRealtimeWhiteboard() {
   const addShape = useBoardStore((s) => s.addShape);
   const removeShapesByIds = useBoardStore((s) => s.removeShapesByIds);
   const updateShape = useBoardStore((s) => s.updateShape);
+  const updateTextNode = useBoardStore((s) => s.updateTextNode);
   const clientIdRef = useRef<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isSubscribedRef = useRef(false);
@@ -249,6 +258,24 @@ export function useRealtimeWhiteboard() {
         updateShape(shapeId, { x, y });
     });
 
+    onBroadcast(BROADCAST_EVENT_UPDATE_TEXT_NODE, (payload: unknown) => {
+      const p = payload as {
+        payload?: UpdateTextNodePayload;
+      } & UpdateTextNodePayload;
+      const data = p.payload ?? p;
+      const { nodeId, x, y, text, comments } = data ?? {};
+      if (typeof nodeId !== "string" || !nodeId) return;
+      const updates: Partial<
+        Pick<MindmapNode, "x" | "y" | "text" | "comments">
+      > = {};
+      if (typeof x === "number") updates.x = x;
+      if (typeof y === "number") updates.y = y;
+      if (typeof text === "string") updates.text = text;
+      if (Array.isArray(comments)) updates.comments = comments;
+      if (Object.keys(updates).length === 0) return;
+      updateTextNode(nodeId, updates);
+    });
+
     channel.subscribe((status: string) => {
       if (status === "SUBSCRIBED") {
         isSubscribedRef.current = true;
@@ -272,6 +299,7 @@ export function useRealtimeWhiteboard() {
     addShape,
     removeShapesByIds,
     updateShape,
+    updateTextNode,
     sendOneLine,
     channelName,
   ]);
@@ -386,6 +414,27 @@ export function useRealtimeWhiteboard() {
     [],
   );
 
+  const broadcastUpdateTextNode = useCallback(
+    (
+      nodeId: string,
+      updates: Partial<{
+        x: number;
+        y: number;
+        text: string;
+        comments: MindmapNode["comments"];
+      }>,
+    ) => {
+      const ch = channelRef.current;
+      if (!ch || !isSubscribedRef.current || !nodeId) return;
+      ch.send({
+        type: "broadcast",
+        event: BROADCAST_EVENT_UPDATE_TEXT_NODE,
+        payload: { nodeId, ...updates },
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     const interval = setInterval(() => {
       const pos = lastCursorPosRef.current;
@@ -409,6 +458,7 @@ export function useRealtimeWhiteboard() {
     broadcastShape,
     broadcastRemoveShapes,
     broadcastUpdateShape,
+    broadcastUpdateTextNode,
     clearMyCursor,
     clientId: clientIdRef.current,
   };

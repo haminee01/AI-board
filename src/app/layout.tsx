@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
 
 export const metadata: Metadata = {
-  title: "AI 실시간 협업 화이트보드",
+  title: "MindGrid",
   description: "Supabase Realtime 기반 협업 화이트보드",
 };
 

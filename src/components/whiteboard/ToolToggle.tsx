@@ -1,35 +1,35 @@
 "use client";
 
 import { useBoardStore } from "@/stores/useBoardStore";
+import type { Tool } from "@/stores/useBoardStore";
+
+const TOOL_BTNS: { id: Tool; label: string }[] = [
+  { id: "pen", label: "펜" },
+  { id: "highlighter", label: "형광팬" },
+  { id: "eraser", label: "지우개" },
+  { id: "text", label: "텍스트" },
+];
 
 export function ToolToggle() {
   const tool = useBoardStore((s) => s.tool);
   const setTool = useBoardStore((s) => s.setTool);
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-slate-300 p-0.5">
-      <button
-        type="button"
-        onClick={() => setTool("pen")}
-        className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${
-          tool === "pen"
-            ? "bg-slate-800 text-white"
-            : "text-slate-600 hover:bg-slate-100"
-        }`}
-      >
-        펜
-      </button>
-      <button
-        type="button"
-        onClick={() => setTool("eraser")}
-        className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${
-          tool === "eraser"
-            ? "bg-slate-800 text-white"
-            : "text-slate-600 hover:bg-slate-100"
-        }`}
-      >
-        지우개
-      </button>
+    <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-300 p-0.5">
+      {TOOL_BTNS.map(({ id, label }) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => setTool(id)}
+          className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${
+            tool === id
+              ? "bg-slate-800 text-white"
+              : "text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

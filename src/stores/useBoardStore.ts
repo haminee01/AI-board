@@ -4,6 +4,9 @@ export interface LineData {
   id?: string;
   points: number[];
   color: string;
+  /** 기본 펜과 구분 (형광팬 등) */
+  strokeWidth?: number;
+  opacity?: number;
 }
 
 export interface CursorData {
@@ -13,11 +16,30 @@ export interface CursorData {
   displayName?: string;
 }
 
+export interface DiscussionReply {
+  id: string;
+  text: string;
+  authorName: string;
+  createdAt: string;
+}
+
+export interface DiscussionComment {
+  id: string;
+  text: string;
+  authorName: string;
+  createdAt: string;
+  replies?: DiscussionReply[];
+}
+
 export interface MindmapNode {
   id: string;
   text: string;
   x: number;
   y: number;
+  /** 미지정이면 마인드맵 버튼 노드 */
+  kind?: "mindmap" | "freetext";
+  fontSize?: number;
+  comments?: DiscussionComment[];
 }
 
 export type ShapeType = "rect" | "ellipse" | "triangle";
@@ -40,7 +62,7 @@ export interface BoardContent {
 
 const MAX_UNDO = 50;
 
-export type Tool = "pen" | "eraser" | ShapeType;
+export type Tool = "pen" | "highlighter" | "eraser" | "text" | ShapeType;
 
 interface BoardState {
   lines: LineData[];
@@ -58,6 +80,12 @@ interface BoardState {
   setCursor: (clientId: string, cursor: CursorData | null) => void;
   addMindmapNodes: (nodes: MindmapNode[]) => void;
   setTextNodes: (nodes: MindmapNode[]) => void;
+  updateTextNode: (
+    id: string,
+    updates: Partial<
+      Pick<MindmapNode, "x" | "y" | "text" | "fontSize" | "comments">
+    >,
+  ) => void;
   addShape: (shape: ShapeData) => void;
   setShapes: (shapes: ShapeData[]) => void;
   updateShape: (
@@ -131,8 +159,16 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   addMindmapNodes: (nodes) =>
     set((state) => ({
       textNodes: [...state.textNodes, ...nodes],
+      redoStack: [],
     })),
-  setTextNodes: (nodes) => set({ textNodes: nodes }),
+  setTextNodes: (nodes) => set({ textNodes: nodes, redoStack: [] }),
+  updateTextNode: (id, updates) =>
+    set((state) => ({
+      textNodes: state.textNodes.map((n) =>
+        n.id === id ? { ...n, ...updates } : n,
+      ),
+      redoStack: [],
+    })),
   addShape: (shape) =>
     set((state) => ({
       shapes: [
