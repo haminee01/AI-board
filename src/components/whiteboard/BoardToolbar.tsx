@@ -18,6 +18,43 @@ import { MindGridSpinner } from "@/components/layout/MindGridSpinner";
 
 const DEFAULT_TITLE = "제목 없음";
 
+function toFriendlySaveErrorMessage(
+  raw: unknown,
+  opts: { isDemoUser: boolean },
+) {
+  const msg = String((raw as { message?: unknown })?.message ?? raw ?? "");
+  const lower = msg.toLowerCase();
+
+  // Supabase `.single()` 호출 시 RLS 등으로 0행이 반환되면 자주 나오는 기술적 메시지
+  if (lower.includes("cannot coerce the result to a single json object")) {
+    return opts.isDemoUser
+      ? "데모 계정에서는 저장이 제한됩니다. 개인 계정으로 로그인하면 저장할 수 있어요."
+      : "저장 권한이 없습니다. 보드 소유자이거나 초대된 멤버인지 확인해 주세요.";
+  }
+
+  if (
+    lower.includes("로그인이 필요합니다") ||
+    lower.includes("need to be logged")
+  ) {
+    return "저장하려면 로그인이 필요합니다.";
+  }
+
+  if (
+    lower.includes("row-level security") ||
+    lower.includes("rls") ||
+    lower.includes("permission denied") ||
+    lower.includes("not allowed")
+  ) {
+    return "저장 권한이 없습니다. 보드 소유자이거나 초대된 멤버인지 확인해 주세요.";
+  }
+
+  if (opts.isDemoUser) {
+    return "데모 계정에서는 저장이 제한됩니다. (면접용 체험 계정) 개인 계정으로 로그인하면 저장할 수 있어요.";
+  }
+
+  return "저장에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+}
+
 export function BoardToolbar() {
   const { user } = useAuth();
   const { data: boards = [], isLoading } = useBoardsQuery(user?.id);
@@ -49,6 +86,9 @@ export function BoardToolbar() {
 
   const currentBoard = boards.find((b) => b.id === currentBoardId);
   const isOwner = !!user && !!currentBoard && currentBoard.user_id === user.id;
+  const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? "test@test.com";
+  const isDemoUser =
+    !!user?.email && user.email.toLowerCase() === demoEmail.toLowerCase();
 
   const { data: members = [] } = useBoardMembersQuery(currentBoardId, isOwner);
   const { data: joinRequests = [] } = useBoardJoinRequestsQuery(
@@ -474,7 +514,7 @@ export function BoardToolbar() {
 
             {saveMutation.isError && (
               <span className="block text-sm text-red-600" role="alert">
-                {String(saveMutation.error?.message)}
+                {toFriendlySaveErrorMessage(saveMutation.error, { isDemoUser })}
               </span>
             )}
             {deleteMutation.isError && (

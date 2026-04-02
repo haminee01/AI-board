@@ -391,9 +391,12 @@ export function WhiteboardCanvas() {
 
   /** Konva 기본 getPointerPosition은 Stage 팬/줌을 반영하지 않음 → 월드 좌표로 통일 */
   const getPointerPosition = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
+    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       const stage = e.target.getStage();
-      return getStagePosFromEvent(stage, e.evt.clientX, e.evt.clientY);
+      const t = (e.evt as TouchEvent).touches?.[0];
+      const cx = t?.clientX ?? (e.evt as MouseEvent).clientX;
+      const cy = t?.clientY ?? (e.evt as MouseEvent).clientY;
+      return getStagePosFromEvent(stage, cx, cy);
     },
     [getStagePosFromEvent],
   );
@@ -450,9 +453,14 @@ export function WhiteboardCanvas() {
   );
 
   const getMindmapNodeUnderPointer = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>): MindmapNode | null => {
+    (
+      e: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+    ): MindmapNode | null => {
       const stage = e.target.getStage();
-      const pos = getStagePosFromEvent(stage, e.evt.clientX, e.evt.clientY);
+      const t = (e.evt as TouchEvent).touches?.[0];
+      const cx = t?.clientX ?? (e.evt as MouseEvent).clientX;
+      const cy = t?.clientY ?? (e.evt as MouseEvent).clientY;
+      const pos = getStagePosFromEvent(stage, cx, cy);
       if (!pos || pos.length < 2) return null;
       return getMindmapNodeAtStagePos(pos[0], pos[1]);
     },
@@ -624,14 +632,19 @@ export function WhiteboardCanvas() {
   );
 
   const handleMouseDown = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (e.evt.button === 1) {
+    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      const isPrimaryDown =
+        "button" in e.evt ? (e.evt as MouseEvent).button === 0 : true;
+      const isMiddleDown =
+        "button" in e.evt ? (e.evt as MouseEvent).button === 1 : false;
+
+      if (isMiddleDown) {
         e.evt.preventDefault();
         middlePanWindowCleanupRef.current?.();
         isMiddlePanningRef.current = true;
         lastMiddlePanClientRef.current = {
-          x: e.evt.clientX,
-          y: e.evt.clientY,
+          x: (e.evt as MouseEvent).clientX,
+          y: (e.evt as MouseEvent).clientY,
         };
         setIsMiddlePanning(true);
         const onMove = (ev: MouseEvent) => {
@@ -658,17 +671,22 @@ export function WhiteboardCanvas() {
         return;
       }
       const mindmapNode = getMindmapNodeUnderPointer(e);
-      if (mindmapNode && e.evt.button === 0) {
+      if (mindmapNode && isPrimaryDown) {
         mouseDownMindmapNodeRef.current = mindmapNode;
         return;
       }
       mouseDownMindmapNodeRef.current = null;
       const stage = e.target.getStage();
       let point = getPointerPosition(e);
-      if (!point && stage)
-        point = getStagePosFromEvent(stage, e.evt.clientX, e.evt.clientY);
+      if (!point && stage) {
+        const t = (e.evt as TouchEvent).touches?.[0];
+        const cx = t?.clientX ?? (e.evt as MouseEvent).clientX;
+        const cy = t?.clientY ?? (e.evt as MouseEvent).clientY;
+        point = getStagePosFromEvent(stage, cx, cy);
+      }
       if (!point || point.length < 2) return;
-      const shift = e.evt.shiftKey;
+      const shift =
+        "shiftKey" in e.evt ? (e.evt as MouseEvent).shiftKey : false;
       const editableNode = getEditableTextNodeAtStagePos(point[0], point[1]);
       if (editableNode?.kind === "freetext") setActiveNoteId(editableNode.id);
       else if (tool !== "text") setActiveNoteId(null);
@@ -764,7 +782,7 @@ export function WhiteboardCanvas() {
       setSelectedLineIds([]);
       setSelectedShapeIds([]);
       setSelectedTextNodeIds([]);
-      if (tool === "text" && !shift && e.evt.button === 0) {
+      if (tool === "text" && !shift && isPrimaryDown) {
         if (editableNode?.kind === "freetext") {
           setTextEditor({ mode: "edit", nodeId: editableNode.id });
           setDraftText(editableNode.text);
@@ -814,7 +832,7 @@ export function WhiteboardCanvas() {
   );
 
   const handleMouseMove = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
+    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (middlePanWindowCleanupRef.current) return;
       const point = getPointerPosition(e);
       if (point) broadcastCursor(point[0], point[1]);
@@ -1568,6 +1586,10 @@ export function WhiteboardCanvas() {
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
+          onTouchStart={handleMouseDown}
+          onTouchMove={handleMouseMove}
+          onTouchEnd={handleMouseUp}
+          onTouchCancel={handleMouseUp}
           onMouseLeave={handleMouseLeave}
           style={{ background: "#f8fafc" }}
         >

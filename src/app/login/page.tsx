@@ -8,6 +8,10 @@ import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
 import { toAuthErrorInfo, type AuthErrorInfo } from "@/lib/auth/auth-error";
 import { MindGridSpinner } from "@/components/layout/MindGridSpinner";
 
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export default function LoginPage() {
   const { signIn } = useAuth();
   const router = useRouter();
@@ -51,14 +55,23 @@ export default function LoginPage() {
       setError(toAuthErrorInfo(e instanceof Error ? e : new Error(String(e))));
       return;
     }
-    const { error } = await signIn(demoEmail, demoPassword);
-    setLoading(false);
-    if (error) {
-      setError(toAuthErrorInfo(error));
-      return;
+    // iOS/모바일에서 유저 생성/비번 리셋 직후 인증 반영이 늦게 되는 경우가 있어 짧게 재시도
+    let lastError: Error | null = null;
+    for (const waitMs of [0, 200, 600, 1200]) {
+      if (waitMs) await sleep(waitMs);
+      const { error } = await signIn(demoEmail, demoPassword);
+      if (!error) {
+        setLoading(false);
+        router.push("/");
+        router.refresh();
+        return;
+      }
+      lastError = error;
+      const info = toAuthErrorInfo(error);
+      if (info.kind !== "invalidCredentials") break;
     }
-    router.push("/");
-    router.refresh();
+    setLoading(false);
+    if (lastError) setError(toAuthErrorInfo(lastError));
   }
 
   return (
