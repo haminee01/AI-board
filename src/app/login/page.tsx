@@ -16,11 +16,42 @@ export default function LoginPage() {
   const [error, setError] = useState<AuthErrorInfo | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? "test@test.com";
+  const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? "qwer1234";
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
     const { error } = await signIn(email, password);
+    setLoading(false);
+    if (error) {
+      setError(toAuthErrorInfo(error));
+      return;
+    }
+    router.push("/");
+    router.refresh();
+  }
+
+  async function handleDemoLogin() {
+    setError(null);
+    setLoading(true);
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+    try {
+      const res = await fetch("/api/demo-user", { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(body?.error || "데모 계정 준비에 실패했습니다.");
+      }
+    } catch (e) {
+      setLoading(false);
+      setError(toAuthErrorInfo(e instanceof Error ? e : new Error(String(e))));
+      return;
+    }
+    const { error } = await signIn(demoEmail, demoPassword);
     setLoading(false);
     if (error) {
       setError(toAuthErrorInfo(error));
@@ -91,6 +122,14 @@ export default function LoginPage() {
             ) : (
               "로그인"
             )}
+          </button>
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            disabled={loading}
+            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+          >
+            테스트 계정으로 로그인
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-slate-500">
