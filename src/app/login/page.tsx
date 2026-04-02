@@ -42,22 +42,19 @@ export default function LoginPage() {
     setLoading(true);
     setEmail(demoEmail);
     setPassword(demoPassword);
+    // 데모 계정 준비(생성/비번 리셋). 실패해도 이미 계정이 존재할 수 있으니 로그인은 계속 시도한다.
     try {
       const res = await fetch("/api/demo-user", { method: "POST" });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(body?.error || "데모 계정 준비에 실패했습니다.");
+        // best-effort: 여기서 즉시 에러 노출하지 말고 signIn 결과로 최종 판단
+        await res.json().catch(() => null);
       }
-    } catch (e) {
-      setLoading(false);
-      setError(toAuthErrorInfo(e instanceof Error ? e : new Error(String(e))));
-      return;
+    } catch {
+      // 모바일 환경에서 API 호출이 실패해도 signIn은 시도
     }
     // iOS/모바일에서 유저 생성/비번 리셋 직후 인증 반영이 늦게 되는 경우가 있어 짧게 재시도
     let lastError: Error | null = null;
-    for (const waitMs of [0, 200, 600, 1200]) {
+    for (const waitMs of [150, 250, 600, 1200, 2000]) {
       if (waitMs) await sleep(waitMs);
       const { error } = await signIn(demoEmail, demoPassword);
       if (!error) {
@@ -68,7 +65,14 @@ export default function LoginPage() {
       }
       lastError = error;
       const info = toAuthErrorInfo(error);
-      if (info.kind !== "invalidCredentials") break;
+      // invalidCredentials / unknown / network 는 일시 이슈 가능성이 있어 재시도
+      if (
+        info.kind !== "invalidCredentials" &&
+        info.kind !== "unknown" &&
+        info.kind !== "network"
+      ) {
+        break;
+      }
     }
     setLoading(false);
     if (lastError) setError(toAuthErrorInfo(lastError));

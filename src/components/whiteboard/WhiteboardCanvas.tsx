@@ -1392,6 +1392,77 @@ export function WhiteboardCanvas() {
     return () => window.removeEventListener("contextmenu", onGlobalContextMenu);
   }, []);
 
+  // iOS/iPadOS: 펜/형광펜 버튼 길게 누르면 색상 메뉴 열기
+  useEffect(() => {
+    const LONG_PRESS_MS = 450;
+    const MOVE_CANCEL_PX = 10;
+    let timer: number | null = null;
+    let startX = 0;
+    let startY = 0;
+    let target: "pen" | "highlighter" | null = null;
+
+    const clear = () => {
+      if (timer != null) window.clearTimeout(timer);
+      timer = null;
+      target = null;
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-color-menu-target]",
+      );
+      const menuTarget = el?.dataset.colorMenuTarget;
+      if (menuTarget !== "pen" && menuTarget !== "highlighter") return;
+
+      const t = e.touches[0]!;
+      startX = t.clientX;
+      startY = t.clientY;
+      target = menuTarget;
+
+      clear();
+      timer = window.setTimeout(() => {
+        if (!target) return;
+        // iOS 기본 callout/텍스트 선택 방지
+        e.preventDefault();
+        setContextMenu(null);
+        const p = clampFixedMenuPosition(startX, startY, 220, 200);
+        setColorMenu({ x: p.left, y: p.top, target });
+        clear();
+      }, LONG_PRESS_MS);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!timer || e.touches.length !== 1) return;
+      const t = e.touches[0]!;
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) clear();
+    };
+
+    const onTouchEnd = () => clear();
+
+    // capture + passive:false 로 preventDefault 가능하게
+    window.addEventListener("touchstart", onTouchStart, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("touchmove", onTouchMove, {
+      capture: true,
+      passive: true,
+    });
+    window.addEventListener("touchend", onTouchEnd, { capture: true });
+    window.addEventListener("touchcancel", onTouchEnd, { capture: true });
+
+    return () => {
+      clear();
+      window.removeEventListener("touchstart", onTouchStart, true);
+      window.removeEventListener("touchmove", onTouchMove, true);
+      window.removeEventListener("touchend", onTouchEnd, true);
+      window.removeEventListener("touchcancel", onTouchEnd, true);
+    };
+  }, [clampFixedMenuPosition]);
+
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
