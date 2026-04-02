@@ -5,7 +5,7 @@ import type { Tool } from "@/stores/useBoardStore";
 
 const TOOL_BTNS: { id: Tool; label: string }[] = [
   { id: "pen", label: "펜" },
-  { id: "highlighter", label: "형광팬" },
+  { id: "highlighter", label: "형광펜" },
   { id: "eraser", label: "지우개" },
   { id: "text", label: "텍스트" },
 ];

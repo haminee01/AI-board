@@ -1402,7 +1402,11 @@ export function WhiteboardCanvas() {
     let lastTapY = 0;
     let lastTapTarget: "pen" | "highlighter" | null = null;
 
-    const openColorMenu = (x: number, y: number, target: "pen" | "highlighter") => {
+    const openColorMenu = (
+      x: number,
+      y: number,
+      target: "pen" | "highlighter",
+    ) => {
       setContextMenu(null);
       const p = clampFixedMenuPosition(x, y, 220, 200);
       setColorMenu({ x: p.left, y: p.top, target });
