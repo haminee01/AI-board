@@ -1212,6 +1212,11 @@ export function WhiteboardCanvas() {
 
   const textEditorStyle = useMemo((): React.CSSProperties | null => {
     if (!textEditor) return null;
+    // Konva Stage의 절대 변환은 화면 줌/패닝 값에 의해 바뀌는데,
+    // 해당 값이 여기 콜백에선 직접 계산에 쓰이지 않아 eslint가 false positive를 낼 수 있습니다.
+    // 따라서 useMemo가 viewScale/viewPos 변경에도 재계산되도록 값을 참조만 보장합니다.
+    void viewScale;
+    void viewPos;
     const stage = stageRef.current;
     if (!stage) {
       return { position: "fixed", left: 8, top: 8, zIndex: 50, minWidth: 140 };
