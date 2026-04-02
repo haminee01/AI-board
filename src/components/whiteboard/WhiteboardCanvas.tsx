@@ -50,6 +50,11 @@ const NOTE_MIN_WIDTH = 120;
 const NOTE_MIN_HEIGHT = 48;
 const CURSOR_RADIUS = 6;
 const ERASER_RADIUS = 24;
+/** 보기 줌 (손가락/트랙패드) */
+const VIEW_SCALE_MIN = 0.12;
+const VIEW_SCALE_MAX = 8;
+/** 두 손가락 거리 변화가 이보다 작으면 줌 없이 이동(팬)만 처리 */
+const TWO_FINGER_ZOOM_INTENT_EPS = 0.007;
 /** 선택된 선 위에서 드래그 시작할 때 인식 반경 */
 const MOVE_HIT_RADIUS = 12;
 const PEN_COLOR_PRESETS = [
@@ -134,6 +139,27 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (target.isContentEditable) return true;
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+/** 컨텍스트/색 메뉴가 뷰포트 밖으로 나가지 않도록 고정 좌표 보정 */
+function clampFixedMenuPosition(
+  clientX: number,
+  clientY: number,
+  menuWidth: number,
+  menuHeight: number,
+): { left: number; top: number } {
+  if (typeof window === "undefined") return { left: clientX, top: clientY };
+  const pad = 10;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  return {
+    left: clamp(clientX, pad, Math.max(pad, vw - menuWidth - pad)),
+    top: clamp(clientY, pad, Math.max(pad, vh - menuHeight - pad)),
+  };
 }
 
 export function WhiteboardCanvas() {
@@ -231,6 +257,25 @@ export function WhiteboardCanvas() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  /** 화면에 보이는 줌·팬 (스테이지 transform; 그리기 좌표계는 그대로) */
+  const [viewScale, setViewScale] = useState(1);
+  const [viewPos, setViewPos] = useState({ x: 0, y: 0 });
+  const viewRef = useRef({ scale: 1, x: 0, y: 0 });
+  viewRef.current = { scale: viewScale, x: viewPos.x, y: viewPos.y };
+  /** 두 손가락 핀치 중 (한 프레임 이상) */
+  const pinchRef = useRef<{
+    lastDist: number;
+    lastMidX: number;
+    lastMidY: number;
+  } | null>(null);
+  /** 가운데 버튼(휠 클릭) 드래그로 화면 이동 */
+  const isMiddlePanningRef = useRef(false);
+  const lastMiddlePanClientRef = useRef<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
+  const middlePanWindowCleanupRef = useRef<(() => void) | null>(null);
+  const [isMiddlePanning, setIsMiddlePanning] = useState(false);
   /** 마인드맵 버튼 위에서 mousedown 했을 때 해당 노드 (클릭 완료 시 2단계 생성용) */
   const mouseDownMindmapNodeRef = useRef<MindmapNode | null>(null);
   const isDrawing = useRef(false);
@@ -272,15 +317,6 @@ export function WhiteboardCanvas() {
   selectedShapeIdsRef.current = selectedShapeIds;
   const selectedTextNodeIdsRef = useRef<string[]>([]);
   selectedTextNodeIdsRef.current = selectedTextNodeIds;
-
-  const getPointerPosition = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
-      const stage = e.target.getStage();
-      const pos = stage?.getPointerPosition();
-      return pos ? [pos.x, pos.y] : null;
-    },
-    [],
-  );
 
   const findLineIdsUnder = useCallback((x: number, y: number): string[] => {
     const ids: string[] = [];
@@ -331,7 +367,7 @@ export function WhiteboardCanvas() {
 
   /** 선택 사각형 안과 겹치는 선 id 목록 반환. Shift+클릭(거의 점)이면 커서 근처 선 선택 */
 
-  /** 이벤트에서 stage 좌표 [x,y] 계산 (컨테이너 rect + 스케일 보정) */
+  /** 이벤트에서 stage(콘텐츠) 좌표 [x,y] — 줌/팬이 있어도 동일하게 보정 */
   const getStagePosFromEvent = useCallback(
     (
       stage: Konva.Stage | null,
@@ -339,15 +375,27 @@ export function WhiteboardCanvas() {
       clientY: number,
     ): number[] | null => {
       if (!stage) return null;
-      const container = stage.container();
-      const rect = container.getBoundingClientRect();
-      const scaleX = stage.width() / rect.width;
-      const scaleY = stage.height() / rect.height;
-      const x = (clientX - rect.left) * scaleX;
-      const y = (clientY - rect.top) * scaleY;
-      return [x, y];
+      const content = stage.getContent();
+      if (!content?.getBoundingClientRect) return null;
+      const rect = content.getBoundingClientRect();
+      const sx = rect.width / (content.clientWidth || rect.width) || 1;
+      const sy = rect.height / (content.clientHeight || rect.height) || 1;
+      const x = (clientX - rect.left) / sx;
+      const y = (clientY - rect.top) / sy;
+      const inv = stage.getAbsoluteTransform().copy().invert();
+      const local = inv.point({ x, y });
+      return [local.x, local.y];
     },
     [],
+  );
+
+  /** Konva 기본 getPointerPosition은 Stage 팬/줌을 반영하지 않음 → 월드 좌표로 통일 */
+  const getPointerPosition = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      const stage = e.target.getStage();
+      return getStagePosFromEvent(stage, e.evt.clientX, e.evt.clientY);
+    },
+    [getStagePosFromEvent],
   );
 
   /** stage 좌표 (x,y)가 마인드맵 버튼 안인 노드 반환 (마인드맵 전용) */
@@ -577,6 +625,38 @@ export function WhiteboardCanvas() {
 
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (e.evt.button === 1) {
+        e.evt.preventDefault();
+        middlePanWindowCleanupRef.current?.();
+        isMiddlePanningRef.current = true;
+        lastMiddlePanClientRef.current = {
+          x: e.evt.clientX,
+          y: e.evt.clientY,
+        };
+        setIsMiddlePanning(true);
+        const onMove = (ev: MouseEvent) => {
+          if (!isMiddlePanningRef.current) return;
+          const last = lastMiddlePanClientRef.current;
+          const dx = ev.clientX - last.x;
+          const dy = ev.clientY - last.y;
+          lastMiddlePanClientRef.current = { x: ev.clientX, y: ev.clientY };
+          setViewPos((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+        };
+        const endMiddlePan = () => {
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+          middlePanWindowCleanupRef.current = null;
+          isMiddlePanningRef.current = false;
+          setIsMiddlePanning(false);
+        };
+        function onUp() {
+          endMiddlePan();
+        }
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        middlePanWindowCleanupRef.current = endMiddlePan;
+        return;
+      }
       const mindmapNode = getMindmapNodeUnderPointer(e);
       if (mindmapNode && e.evt.button === 0) {
         mouseDownMindmapNodeRef.current = mindmapNode;
@@ -735,6 +815,7 @@ export function WhiteboardCanvas() {
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (middlePanWindowCleanupRef.current) return;
       const point = getPointerPosition(e);
       if (point) broadcastCursor(point[0], point[1]);
       if (isMovingSelectionRef.current && point) {
@@ -847,7 +928,66 @@ export function WhiteboardCanvas() {
     }
   }, [addLine, broadcastLine, highlighterColor, penColor, pushUndo]);
 
+  const commitLineRef = useRef(commitLine);
+  commitLineRef.current = commitLine;
+
+  const handleStageWheel = useCallback(
+    (e: Konva.KonvaEventObject<WheelEvent>) => {
+      e.evt.preventDefault();
+      const stage = e.target.getStage();
+      if (!stage) return;
+
+      const zoomGesture = e.evt.ctrlKey || e.evt.metaKey;
+
+      if (!zoomGesture) {
+        let dx = e.evt.deltaX;
+        let dy = e.evt.deltaY;
+        if (e.evt.deltaMode === 1) {
+          const line = 18;
+          dx *= line;
+          dy *= line;
+        } else if (e.evt.deltaMode === 2) {
+          const el = stage.container();
+          const w = el?.clientWidth ?? 800;
+          const h = el?.clientHeight ?? 600;
+          dx *= w;
+          dy *= h;
+        }
+        setViewPos((prev) => ({
+          x: prev.x - dx,
+          y: prev.y - dy,
+        }));
+        return;
+      }
+
+      const p = getStagePosFromEvent(stage, e.evt.clientX, e.evt.clientY);
+      if (!p) return;
+      const pointer = { x: p[0], y: p[1] };
+      const v = viewRef.current;
+      const oldScale = v.scale;
+      const scaleBy = 1.08;
+      const newScale =
+        e.evt.deltaY > 0
+          ? Math.max(VIEW_SCALE_MIN, oldScale / scaleBy)
+          : Math.min(VIEW_SCALE_MAX, oldScale * scaleBy);
+      const mousePointTo = {
+        x: (pointer.x - v.x) / oldScale,
+        y: (pointer.y - v.y) / oldScale,
+      };
+      setViewScale(newScale);
+      setViewPos({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      });
+    },
+    [getStagePosFromEvent],
+  );
+
   const handleMouseUp = useCallback(() => {
+    if (middlePanWindowCleanupRef.current) {
+      middlePanWindowCleanupRef.current();
+      return;
+    }
     if (mouseDownMindmapNodeRef.current) {
       const node = mouseDownMindmapNodeRef.current;
       mouseDownMindmapNodeRef.current = null;
@@ -931,7 +1071,8 @@ export function WhiteboardCanvas() {
         e.stopPropagation();
         mouseDownMindmapNodeRef.current = null;
         setColorMenu(null);
-        setContextMenu({ x: e.clientX, y: e.clientY, node });
+        const p = clampFixedMenuPosition(e.clientX, e.clientY, 200, 140);
+        setContextMenu({ x: p.left, y: p.top, node });
         return;
       }
     },
@@ -1076,8 +1217,6 @@ export function WhiteboardCanvas() {
       return { position: "fixed", left: 8, top: 8, zIndex: 50, minWidth: 140 };
     }
     const rect = stage.container().getBoundingClientRect();
-    const scaleX = rect.width / stage.width();
-    const scaleY = rect.height / stage.height();
     let sx: number;
     let sy: number;
     if (textEditor.mode === "new") {
@@ -1096,14 +1235,16 @@ export function WhiteboardCanvas() {
       sx = n.x;
       sy = n.y;
     }
+    const t = stage.getAbsoluteTransform();
+    const pt = t.point({ x: sx, y: sy });
     return {
       position: "fixed",
-      left: rect.left + sx * scaleX,
-      top: rect.top + sy * scaleY,
+      left: rect.left + pt.x,
+      top: rect.top + pt.y,
       zIndex: 50,
       minWidth: 140,
     };
-  }, [textEditor, textNodes]);
+  }, [textEditor, textNodes, viewScale, viewPos]);
 
   const myName = useMemo(() => {
     if (!user) return "익명";
@@ -1217,9 +1358,10 @@ export function WhiteboardCanvas() {
       if (menuTarget !== "pen" && menuTarget !== "highlighter") return;
       e.preventDefault();
       setContextMenu(null);
+      const p = clampFixedMenuPosition(e.clientX, e.clientY, 220, 200);
       setColorMenu({
-        x: e.clientX,
-        y: e.clientY,
+        x: p.left,
+        y: p.top,
         target: menuTarget,
       });
     };
@@ -1250,12 +1392,131 @@ export function WhiteboardCanvas() {
     };
   }, []);
 
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        if (isDrawing.current && currentPointsRef.current.length >= 4) {
+          commitLineRef.current();
+        }
+        isDrawing.current = false;
+        setCurrentPoints([]);
+        isErasing.current = false;
+        isDrawingShapeRef.current = false;
+        setDraftShape(null);
+        isSelectingRef.current = false;
+        isMovingSelectionRef.current = false;
+        mouseDownMindmapNodeRef.current = null;
+        const t0 = e.touches[0]!;
+        const t1 = e.touches[1]!;
+        pinchRef.current = {
+          lastDist: Math.hypot(
+            t0.clientX - t1.clientX,
+            t0.clientY - t1.clientY,
+          ),
+          lastMidX: (t0.clientX + t1.clientX) / 2,
+          lastMidY: (t0.clientY + t1.clientY) / 2,
+        };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length < 2) return;
+      let p = pinchRef.current;
+      if (!p) {
+        const t0 = e.touches[0]!;
+        const t1 = e.touches[1]!;
+        p = {
+          lastDist: Math.hypot(
+            t0.clientX - t1.clientX,
+            t0.clientY - t1.clientY,
+          ),
+          lastMidX: (t0.clientX + t1.clientX) / 2,
+          lastMidY: (t0.clientY + t1.clientY) / 2,
+        };
+        pinchRef.current = p;
+      }
+      e.preventDefault();
+      const stage = stageRef.current;
+      if (!stage) return;
+      const t0 = e.touches[0]!;
+      const t1 = e.touches[1]!;
+      const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+      const midX = (t0.clientX + t1.clientX) / 2;
+      const midY = (t0.clientY + t1.clientY) / 2;
+      const scaleRatio = dist / p.lastDist;
+      if (Math.abs(scaleRatio - 1) < TWO_FINGER_ZOOM_INTENT_EPS) {
+        const panDx = midX - p.lastMidX;
+        const panDy = midY - p.lastMidY;
+        setViewPos((prev) => ({
+          x: prev.x + panDx,
+          y: prev.y + panDy,
+        }));
+        pinchRef.current = {
+          lastDist: dist,
+          lastMidX: midX,
+          lastMidY: midY,
+        };
+        return;
+      }
+      const pw = getStagePosFromEvent(stage, midX, midY);
+      if (!pw) return;
+      const pointer = { x: pw[0], y: pw[1] };
+      const v = viewRef.current;
+      const oldScale = v.scale;
+      const newScale = clamp(
+        oldScale * scaleRatio,
+        VIEW_SCALE_MIN,
+        VIEW_SCALE_MAX,
+      );
+      const mousePointTo = {
+        x: (pointer.x - v.x) / oldScale,
+        y: (pointer.y - v.y) / oldScale,
+      };
+      let newX = pointer.x - mousePointTo.x * newScale;
+      let newY = pointer.y - mousePointTo.y * newScale;
+      newX += midX - p.lastMidX;
+      newY += midY - p.lastMidY;
+      setViewScale(newScale);
+      setViewPos({ x: newX, y: newY });
+      pinchRef.current = {
+        lastDist: dist,
+        lastMidX: midX,
+        lastMidY: midY,
+      };
+    };
+
+    const onTouchEnd = (ev: TouchEvent) => {
+      if (ev.touches.length < 2) pinchRef.current = null;
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [getStagePosFromEvent]);
+
+  useEffect(() => {
+    return () => {
+      middlePanWindowCleanupRef.current?.();
+    };
+  }, []);
+
   return (
     <React.Fragment>
       <div
         ref={canvasContainerRef}
-        className="w-full h-full"
-        style={{ position: "relative" }}
+        className={`relative h-full w-full touch-none overscroll-contain ${
+          isMiddlePanning ? "cursor-grabbing" : ""
+        }`}
         onContextMenu={handleNativeContextMenu}
       >
         {textEditor && textEditorStyle ? (
@@ -1294,6 +1555,11 @@ export function WhiteboardCanvas() {
           }}
           width={canvasSize.width}
           height={canvasSize.height}
+          scaleX={viewScale}
+          scaleY={viewScale}
+          x={viewPos.x}
+          y={viewPos.y}
+          onWheel={handleStageWheel}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -1609,7 +1875,7 @@ export function WhiteboardCanvas() {
         </Stage>
       </div>
       {activeNote && (
-        <aside className="fixed inset-x-2 bottom-2 top-14 z-40 overflow-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-16 sm:w-80 sm:max-h-[calc(100vh-5rem)]">
+        <aside className="fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-[max(0.5rem,env(safe-area-inset-left))] right-[max(0.5rem,env(safe-area-inset-right))] top-[max(3.5rem,env(safe-area-inset-top))] z-40 overflow-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl sm:bottom-auto sm:left-auto sm:right-[max(1rem,env(safe-area-inset-right))] sm:top-[max(4rem,env(safe-area-inset-top))] sm:w-80 sm:max-h-[min(85dvh,calc(100svh-5rem))]">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">
               텍스트/댓글

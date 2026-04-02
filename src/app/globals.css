@@ -10,4 +10,10 @@
 body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));
+  overflow-x: clip;
+}
+
+/* 모바일·태블릿에서 가로 스크롤·주소창 높이 이슈 완화 */
+html {
+  height: 100%;
 }

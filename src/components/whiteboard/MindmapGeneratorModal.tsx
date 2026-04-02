@@ -109,14 +109,17 @@ export function MindmapGeneratorModal() {
     const syncViewport = () => {
       const compact = window.innerWidth < 768;
       setIsCompactViewport(compact);
+      const vv = window.visualViewport;
+      const vw = vv?.width ?? window.innerWidth;
+      const vh = vv?.height ?? window.innerHeight;
       if (compact) {
         setPos({ x: 8, y: 8 });
       } else {
         setPos((prev) => {
           const panelWidth = 460;
           const panelHeight = 520;
-          const maxX = Math.max(8, window.innerWidth - panelWidth - 8);
-          const maxY = Math.max(8, window.innerHeight - panelHeight - 8);
+          const maxX = Math.max(8, vw - panelWidth - 8);
+          const maxY = Math.max(8, vh - panelHeight - 8);
           return {
             x: clamp(prev.x, 8, maxX),
             y: clamp(prev.y, 8, maxY),
@@ -127,7 +130,11 @@ export function MindmapGeneratorModal() {
 
     syncViewport();
     window.addEventListener("resize", syncViewport);
-    return () => window.removeEventListener("resize", syncViewport);
+    window.visualViewport?.addEventListener("resize", syncViewport);
+    return () => {
+      window.removeEventListener("resize", syncViewport);
+      window.visualViewport?.removeEventListener("resize", syncViewport);
+    };
   }, []);
 
   const startDrag = useCallback((clientX: number, clientY: number) => {
@@ -153,8 +160,11 @@ export function MindmapGeneratorModal() {
       const nextX = e.clientX - dragRef.current.offsetX;
       const nextY = e.clientY - dragRef.current.offsetY;
 
-      const maxX = window.innerWidth - width - 8;
-      const maxY = window.innerHeight - height - 8;
+      const vv = window.visualViewport;
+      const vw = vv?.width ?? window.innerWidth;
+      const vh = vv?.height ?? window.innerHeight;
+      const maxX = vw - width - 8;
+      const maxY = vh - height - 8;
       setPos({
         x: clamp(nextX, 8, Math.max(8, maxX)),
         y: clamp(nextY, 8, Math.max(8, maxY)),
@@ -199,15 +209,22 @@ export function MindmapGeneratorModal() {
     <div className="fixed inset-0 z-50">
       <div
         className="absolute inset-0 bg-black/30"
-        onMouseDown={() => close()}
+        onPointerDown={() => close()}
+        aria-hidden
       />
 
       <div
         ref={panelRef}
-        className="absolute max-h-[calc(100vh-1rem)] w-[min(460px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+        className="absolute max-h-[min(92dvh,calc(100svh-1rem))] w-[min(460px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
         style={
           isCompactViewport
-            ? { left: 8, right: 8, top: 8, bottom: 8, width: "auto" }
+            ? {
+                left: "max(8px, env(safe-area-inset-left, 0px))",
+                right: "max(8px, env(safe-area-inset-right, 0px))",
+                top: "max(8px, env(safe-area-inset-top, 0px))",
+                bottom: "max(8px, env(safe-area-inset-bottom, 0px))",
+                width: "auto",
+              }
             : { left: pos.x, top: pos.y }
         }
         onPointerDown={onPanelPointerDown}

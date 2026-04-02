@@ -72,7 +72,7 @@ export function ShapeToolbar() {
 
   return (
     <div
-      className="absolute bottom-3 left-1/2 z-30 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur-sm sm:bottom-5 sm:max-w-none"
+      className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 z-30 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur-sm sm:bottom-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-none"
       role="toolbar"
       aria-label="도형 선택"
     >
