@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth/auth-context";
 import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
 import { toAuthErrorInfo, type AuthErrorInfo } from "@/lib/auth/auth-error";
+import { MindGridSpinner } from "@/components/layout/MindGridSpinner";
 
 export default function SignupPage() {
   const { signUp } = useAuth();
@@ -29,7 +30,7 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50">
+      <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-[color:var(--background)]">
         <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm text-center">
           <h1 className="text-xl font-semibold text-slate-800">
             이메일을 확인해 주세요
@@ -40,7 +41,7 @@ export default function SignupPage() {
           </p>
           <Link
             href="/login"
-            className="mt-4 inline-block rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-700"
+            className="mt-4 inline-block rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
           >
             로그인 페이지로
           </Link>
@@ -58,7 +59,7 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50">
+    <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-[color:var(--background)]">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-slate-800 text-center">
           회원가입
@@ -81,7 +82,7 @@ export default function SignupPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -99,7 +100,7 @@ export default function SignupPage() {
               required
               minLength={6}
               autoComplete="new-password"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
           {error && (
@@ -116,9 +117,19 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+            className="relative w-full overflow-hidden rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "가입 중…" : "회원가입"}
+            {loading ? (
+              <>
+                <span className="relative z-10 inline-flex items-center justify-center gap-2">
+                  <MindGridSpinner size={18} />
+                  가입 중…
+                </span>
+                <span className="mindgrid-shimmer" aria-hidden />
+              </>
+            ) : (
+              "회원가입"
+            )}
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-slate-500">

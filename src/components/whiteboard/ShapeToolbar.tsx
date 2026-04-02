@@ -72,7 +72,7 @@ export function ShapeToolbar() {
 
   return (
     <div
-      className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 z-30 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur-sm sm:bottom-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-none"
+      className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 z-30 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-xl border border-blue-200 bg-white/95 px-2 py-2 shadow-lg backdrop-blur-sm sm:bottom-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-none"
       role="toolbar"
       aria-label="도형 선택"
     >
@@ -86,8 +86,8 @@ export function ShapeToolbar() {
             title={label}
             className={`rounded-lg p-2.5 transition-colors ${
               tool === type
-                ? "bg-indigo-100 text-indigo-700"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-800"
+                ? "bg-blue-600 text-white"
+                : "text-blue-700 hover:bg-blue-50 hover:text-blue-800"
             }`}
           >
             <Icon className="h-5 w-5" />

@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { useBoardStore } from "@/stores/useBoardStore";
 import { useBoardByIdQuery, useRequestToJoinMutation } from "@/hooks/useBoards";
 import { useEffect, useState } from "react";
+import { MindGridSpinner } from "@/components/layout/MindGridSpinner";
 
 export default function BoardByIdPage() {
   const params = useParams();
@@ -38,7 +39,10 @@ export default function BoardByIdPage() {
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-slate-500">로딩 중…</p>
+        <div className="flex items-center gap-2 text-slate-500">
+          <MindGridSpinner size={18} />
+          <p>로딩 중…</p>
+        </div>
       </div>
     );
   }
@@ -49,7 +53,7 @@ export default function BoardByIdPage() {
         <p className="text-slate-700">이 보드를 보려면 로그인이 필요합니다.</p>
         <Link
           href="/login"
-          className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
           로그인
         </Link>
@@ -74,7 +78,10 @@ export default function BoardByIdPage() {
   if (boardLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-slate-500">보드 불러오는 중…</p>
+        <div className="flex items-center gap-2 text-slate-500">
+          <MindGridSpinner size={18} />
+          <p>보드 불러오는 중…</p>
+        </div>
       </div>
     );
   }
@@ -95,9 +102,19 @@ export default function BoardByIdPage() {
               });
             }}
             disabled={requestMutation.isPending}
-            className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            className="relative rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 overflow-hidden"
           >
-            {requestMutation.isPending ? "요청 중…" : "가입 요청 보내기"}
+            {requestMutation.isPending ? (
+              <>
+                <span className="relative z-10 inline-flex items-center justify-center gap-2">
+                  <MindGridSpinner size={18} />
+                  요청 중…
+                </span>
+                <span className="mindgrid-shimmer" aria-hidden />
+              </>
+            ) : (
+              "가입 요청 보내기"
+            )}
           </button>
         ) : (
           <p className="text-sm text-green-600">
@@ -119,7 +136,10 @@ export default function BoardByIdPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-slate-500">보드로 이동 중…</p>
+      <div className="flex items-center gap-2 text-slate-500">
+        <MindGridSpinner size={18} />
+        <p>보드로 이동 중…</p>
+      </div>
     </div>
   );
 }

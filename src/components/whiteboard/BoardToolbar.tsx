@@ -14,6 +14,7 @@ import {
   useRejectJoinRequestMutation,
 } from "@/hooks/useBoards";
 import type { BoardVisibility } from "@/types/board";
+import { MindGridSpinner } from "@/components/layout/MindGridSpinner";
 
 const DEFAULT_TITLE = "제목 없음";
 
@@ -210,7 +211,7 @@ export function BoardToolbar() {
       <button
         type="button"
         onClick={() => setMenuOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:gap-2 sm:px-3 sm:text-sm"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 sm:gap-2 sm:px-3 sm:text-sm"
         aria-expanded={menuOpen}
         aria-haspopup="menu"
       >
@@ -283,14 +284,24 @@ export function BoardToolbar() {
                   type="button"
                   onClick={handleSave}
                   disabled={saveMutation.isPending}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="relative overflow-hidden rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {saveMutation.isPending ? "저장 중…" : "저장"}
+                  {saveMutation.isPending ? (
+                    <>
+                      <span className="relative z-10 inline-flex items-center justify-center gap-2">
+                        <MindGridSpinner size={16} />
+                        저장 중…
+                      </span>
+                      <span className="mindgrid-shimmer" aria-hidden />
+                    </>
+                  ) : (
+                    "저장"
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={handleNewBoard}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
                 >
                   새 보드
                 </button>
@@ -299,10 +310,17 @@ export function BoardToolbar() {
                     type="button"
                     onClick={handleDeleteBoard}
                     disabled={deleteMutation.isPending}
-                    className="col-span-2 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    className="col-span-2 rounded-lg border border-orange-200 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-50"
                     title="현재 보드를 삭제합니다"
                   >
-                    {deleteMutation.isPending ? "삭제 중…" : "보드 삭제"}
+                    {deleteMutation.isPending ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <MindGridSpinner size={16} />
+                        삭제 중…
+                      </span>
+                    ) : (
+                      "보드 삭제"
+                    )}
                   </button>
                 )}
               </div>
@@ -322,7 +340,7 @@ export function BoardToolbar() {
                         alert("초대 링크가 복사되었습니다.");
                       });
                     }}
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
                   >
                     링크 복사
                   </button>
@@ -332,7 +350,7 @@ export function BoardToolbar() {
                       setInviteOpen((o) => !o);
                       setJoinRequestsOpen(false);
                     }}
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
                   >
                     초대
                   </button>
@@ -357,7 +375,7 @@ export function BoardToolbar() {
                           setInviteOpen(false);
                           setInviteError(null);
                         }}
-                        className="rounded px-2 py-1 text-sm text-slate-600 hover:bg-slate-200"
+                        className="rounded px-2 py-1 text-sm text-blue-700 hover:bg-blue-100"
                       >
                         취소
                       </button>
@@ -365,9 +383,19 @@ export function BoardToolbar() {
                         type="button"
                         onClick={handleInvite}
                         disabled={inviteMutation.isPending}
-                        className="rounded bg-slate-700 px-2 py-1 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+                        className="relative overflow-hidden rounded bg-blue-600 px-2 py-1 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
                       >
-                        {inviteMutation.isPending ? "처리 중…" : "초대"}
+                        {inviteMutation.isPending ? (
+                          <>
+                            <span className="relative z-10 inline-flex items-center justify-center gap-2">
+                              <MindGridSpinner size={16} />
+                              처리 중…
+                            </span>
+                            <span className="mindgrid-shimmer" aria-hidden />
+                          </>
+                        ) : (
+                          "초대"
+                        )}
                       </button>
                     </div>
                     {(inviteError || inviteMutation.isError) && (
@@ -384,7 +412,7 @@ export function BoardToolbar() {
                     setJoinRequestsOpen((o) => !o);
                     setInviteOpen(false);
                   }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="w-full rounded-lg border border-blue-200 px-3 py-1.5 text-left text-sm font-medium text-blue-700 hover:bg-blue-50"
                 >
                   가입 요청{" "}
                   {joinRequests.length > 0 ? `(${joinRequests.length})` : ""}
@@ -417,7 +445,7 @@ export function BoardToolbar() {
                                   });
                                 }}
                                 disabled={acceptMutation.isPending}
-                                className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                                className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
                               >
                                 수락
                               </button>
@@ -430,7 +458,7 @@ export function BoardToolbar() {
                                   });
                                 }}
                                 disabled={rejectMutation.isPending}
-                                className="rounded bg-slate-400 px-2 py-0.5 text-xs text-white hover:bg-slate-500 disabled:opacity-50"
+                                className="rounded bg-[var(--accent)] px-2 py-0.5 text-xs text-white hover:bg-orange-600 disabled:opacity-50"
                               >
                                 거절
                               </button>

@@ -5,15 +5,144 @@
 :root {
   --foreground-rgb: 15 23 42;
   --background-rgb: 248 250 252;
+
+  /* MindGrid brand colors */
+  --primary: #2563eb; /* blue */
+  --accent: #f59e0b; /* orange */
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --muted: #64748b;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
+  color: var(--foreground);
+  background: var(--background);
   overflow-x: clip;
 }
 
 /* 모바일·태블릿에서 가로 스크롤·주소창 높이 이슈 완화 */
 html {
   height: 100%;
+}
+
+@keyframes mindgrid-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes mindgrid-grid-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: rotate(45deg) scale(0.92);
+  }
+  50% {
+    opacity: 0.75;
+    transform: rotate(45deg) scale(1);
+  }
+}
+
+@keyframes mindgrid-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes mindgrid-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@layer utilities {
+  .mindgrid-spinner {
+    position: relative;
+    display: inline-block;
+    width: var(--size, 18px);
+    height: var(--size, 18px);
+    flex: 0 0 auto;
+  }
+
+  .mindgrid-spinner--paused .mindgrid-spinner-ring,
+  .mindgrid-spinner--paused .mindgrid-spinner-grid,
+  .mindgrid-spinner--paused .mindgrid-spinner-dot-orbit,
+  .mindgrid-spinner--paused .mindgrid-shimmer {
+    animation: none !important;
+  }
+
+  .mindgrid-spinner-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    border: 2px solid rgba(37, 99, 235, 0.18);
+    border-top-color: var(--primary);
+    animation: mindgrid-spin 900ms linear infinite;
+  }
+
+  .mindgrid-spinner-grid {
+    position: absolute;
+    inset: -2px;
+    border-radius: 10px;
+    opacity: 0.5;
+    transform: rotate(45deg) scale(0.95);
+    background-image: radial-gradient(
+      circle at center,
+      rgba(37, 99, 235, 0.55) 1.1px,
+      transparent 1.2px
+    );
+    background-size: 6px 6px;
+    animation: mindgrid-grid-pulse 1200ms ease-in-out infinite;
+  }
+
+  .mindgrid-spinner-dot-orbit {
+    position: absolute;
+    inset: 0;
+    animation: mindgrid-orbit 1100ms linear infinite;
+  }
+
+  .mindgrid-spinner-dot {
+    position: absolute;
+    left: 50%;
+    top: 1px;
+    width: 30%;
+    height: 30%;
+    border-radius: 9999px;
+    transform: translateX(-50%);
+    background: var(--accent);
+    box-shadow: 0 0 calc(var(--size, 18px) * 0.35) rgba(245, 158, 11, 0.35);
+  }
+
+  /* 버튼 loading용: Primary 그라데이션이 부드럽게 지나가요. */
+  .mindgrid-shimmer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.35),
+      transparent
+    );
+    transform: translateX(-120%);
+    animation: mindgrid-shimmer 1.1s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mindgrid-spinner-ring,
+    .mindgrid-spinner-grid,
+    .mindgrid-spinner-dot-orbit,
+    .mindgrid-shimmer {
+      animation: none !important;
+    }
+  }
 }

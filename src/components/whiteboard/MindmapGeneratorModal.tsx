@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMindmapGeneratePreview } from "@/hooks/useMindmapGeneratePreview";
 import { useMindmapGeneratorModalStore } from "@/stores/useMindmapGeneratorModalStore";
+import { MindGridSpinner } from "@/components/layout/MindGridSpinner";
 
 function toMindmapFriendlyError(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error ?? "");
@@ -254,7 +255,7 @@ export function MindmapGeneratorModal() {
 
           <button
             type="button"
-            className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-sm text-slate-700 hover:bg-slate-100"
+            className="rounded-md border border-blue-200 bg-white px-2.5 py-1 text-sm text-blue-700 hover:bg-blue-50"
             onClick={() => close()}
           >
             닫기
@@ -281,9 +282,19 @@ export function MindmapGeneratorModal() {
               type="button"
               disabled={isGenerating || !keywordValue.trim()}
               onClick={() => void onGenerate(keywordValue)}
-              className="flex-1 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+              className="relative overflow-hidden flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {isGenerating ? "생성 중…" : "AI 생성"}
+              {isGenerating ? (
+                <>
+                  <span className="relative z-10 inline-flex items-center justify-center gap-2">
+                    <MindGridSpinner size={18} />
+                    생성 중…
+                  </span>
+                  <span className="mindgrid-shimmer" aria-hidden />
+                </>
+              ) : (
+                "AI 생성"
+              )}
             </button>
             <button
               type="button"
@@ -294,7 +305,7 @@ export function MindmapGeneratorModal() {
                 setSearch("");
                 setError(null);
               }}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
             >
               초기화
             </button>
@@ -322,7 +333,14 @@ export function MindmapGeneratorModal() {
             />
 
             <div className="max-h-56 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
-              {results.length === 0 ? (
+              {isGenerating ? (
+                <p className="px-2 py-4 text-center text-sm text-slate-500">
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <MindGridSpinner size={16} />
+                    생성 중…
+                  </span>
+                </p>
+              ) : results.length === 0 ? (
                 <p className="px-2 py-4 text-center text-sm text-slate-500">
                   키워드를 입력하고 “AI 생성”을 눌러보세요.
                 </p>

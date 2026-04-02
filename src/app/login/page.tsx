@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
 import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
 import { toAuthErrorInfo, type AuthErrorInfo } from "@/lib/auth/auth-error";
+import { MindGridSpinner } from "@/components/layout/MindGridSpinner";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
@@ -30,7 +31,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50">
+    <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-[color:var(--background)]">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-slate-800 text-center">
           로그인
@@ -53,7 +54,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -70,16 +71,26 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
           {error && <AuthErrorBanner error={error} />}
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+            className="relative w-full overflow-hidden rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "로그인 중…" : "로그인"}
+            {loading ? (
+              <>
+                <span className="relative z-10 inline-flex items-center justify-center gap-2">
+                  <MindGridSpinner size={18} />
+                  로그인 중…
+                </span>
+                <span className="mindgrid-shimmer" aria-hidden />
+              </>
+            ) : (
+              "로그인"
+            )}
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-slate-500">

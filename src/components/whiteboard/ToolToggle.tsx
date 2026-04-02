@@ -15,7 +15,7 @@ export function ToolToggle() {
   const setTool = useBoardStore((s) => s.setTool);
 
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-300 p-0.5">
+    <div className="flex flex-wrap items-center gap-1 rounded-lg border border-blue-200 p-0.5">
       {TOOL_BTNS.map(({ id, label }) => (
         <button
           key={id}
@@ -26,8 +26,8 @@ export function ToolToggle() {
           }
           className={`rounded-md px-2 py-1 text-xs font-medium transition-colors sm:px-2.5 sm:text-sm ${
             tool === id
-              ? "bg-slate-800 text-white"
-              : "text-slate-600 hover:bg-slate-100"
+              ? "bg-blue-600 text-white hover:bg-blue-700"
+              : "text-blue-700 hover:bg-blue-50 hover:text-blue-800"
           }`}
         >
           {label}

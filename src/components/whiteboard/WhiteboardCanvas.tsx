@@ -1882,7 +1882,7 @@ export function WhiteboardCanvas() {
             </h3>
             <button
               type="button"
-              className="text-xs text-slate-500 hover:text-slate-700"
+              className="text-xs text-blue-700 hover:text-blue-800"
               onClick={() => setActiveNoteId(null)}
             >
               닫기
@@ -1907,7 +1907,7 @@ export function WhiteboardCanvas() {
                 <>
                   <button
                     type="button"
-                    className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                    className="rounded border border-blue-200 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
                     onClick={() => {
                       setEditingNoteText(false);
                       setEditingNoteDraft("");
@@ -1917,7 +1917,7 @@ export function WhiteboardCanvas() {
                   </button>
                   <button
                     type="button"
-                    className="rounded bg-slate-800 px-2 py-1 text-xs text-white hover:bg-slate-700"
+                    className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
                     onClick={() => {
                       pushUndo();
                       updateTextNode(activeNote.id, { text: editingNoteDraft });
@@ -1934,7 +1934,7 @@ export function WhiteboardCanvas() {
               ) : (
                 <button
                   type="button"
-                  className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  className="rounded border border-blue-200 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50"
                   onClick={() => {
                     setEditingNoteText(true);
                     setEditingNoteDraft(activeNote.text);
@@ -1945,7 +1945,7 @@ export function WhiteboardCanvas() {
               )}
               <button
                 type="button"
-                className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                className="rounded border border-orange-200 px-2 py-1 text-xs text-orange-700 hover:bg-orange-50"
                 onClick={() => {
                   const ok = window.confirm("이 텍스트와 댓글을 삭제할까요?");
                   if (!ok) return;
@@ -1974,7 +1974,7 @@ export function WhiteboardCanvas() {
                   <span className="flex gap-2">
                     <button
                       type="button"
-                      className="text-xs text-slate-600 hover:text-slate-900"
+                      className="text-xs text-blue-700 hover:text-blue-900"
                       onClick={() => {
                         setEditingCommentId(c.id);
                         setEditingCommentDraft(c.text);
@@ -1984,7 +1984,7 @@ export function WhiteboardCanvas() {
                     </button>
                     <button
                       type="button"
-                      className="text-xs text-red-600 hover:text-red-700"
+                      className="text-xs text-orange-600 hover:text-orange-700"
                       onClick={() => {
                         const nextComments = (activeNote.comments ?? []).filter(
                           (x) => x.id !== c.id,
@@ -2007,7 +2007,7 @@ export function WhiteboardCanvas() {
                     <div className="flex justify-end gap-1">
                       <button
                         type="button"
-                        className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        className="rounded px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
                         onClick={() => {
                           setEditingCommentId(null);
                           setEditingCommentDraft("");
@@ -2017,7 +2017,7 @@ export function WhiteboardCanvas() {
                       </button>
                       <button
                         type="button"
-                        className="rounded bg-slate-800 px-2 py-1 text-xs text-white"
+                        className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
                         onClick={() => {
                           const nextComments = (activeNote.comments ?? []).map(
                             (x) =>
@@ -2051,7 +2051,7 @@ export function WhiteboardCanvas() {
                           <span className="flex gap-2">
                             <button
                               type="button"
-                              className="text-[11px] text-slate-600 hover:text-slate-900"
+                              className="text-[11px] text-blue-700 hover:text-blue-900"
                               onClick={() => {
                                 setEditingReplyKey(`${c.id}:${r.id}`);
                                 setEditingReplyDraft(r.text);
@@ -2061,7 +2061,7 @@ export function WhiteboardCanvas() {
                             </button>
                             <button
                               type="button"
-                              className="text-[11px] text-red-600 hover:text-red-700"
+                              className="text-[11px] text-orange-600 hover:text-orange-700"
                               onClick={() => {
                                 const nextComments = (
                                   activeNote.comments ?? []
@@ -2095,7 +2095,7 @@ export function WhiteboardCanvas() {
                             <div className="flex justify-end gap-1">
                               <button
                                 type="button"
-                                className="rounded px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-100"
+                                className="rounded px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100"
                                 onClick={() => {
                                   setEditingReplyKey(null);
                                   setEditingReplyDraft("");
@@ -2105,7 +2105,7 @@ export function WhiteboardCanvas() {
                               </button>
                               <button
                                 type="button"
-                                className="rounded bg-slate-800 px-2 py-0.5 text-[11px] text-white"
+                                className="rounded bg-blue-600 px-2 py-0.5 text-[11px] text-white hover:bg-blue-700"
                                 onClick={() => {
                                   const nextComments = (
                                     activeNote.comments ?? []
@@ -2158,7 +2158,7 @@ export function WhiteboardCanvas() {
                       <div className="flex justify-end gap-1">
                         <button
                           type="button"
-                          className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                          className="rounded px-2 py-1 text-xs text-blue-700 hover:bg-blue-100"
                           onClick={() => {
                             setReplyTargetCommentId(null);
                             setReplyDraft("");
@@ -2168,7 +2168,7 @@ export function WhiteboardCanvas() {
                         </button>
                         <button
                           type="button"
-                          className="rounded bg-slate-800 px-2 py-1 text-xs text-white"
+                          className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
                           onClick={addReply}
                         >
                           답글 등록
@@ -2178,7 +2178,7 @@ export function WhiteboardCanvas() {
                   ) : (
                     <button
                       type="button"
-                      className="text-xs text-slate-600 hover:text-slate-900"
+                      className="text-xs text-blue-700 hover:text-blue-900"
                       onClick={() => setReplyTargetCommentId(c.id)}
                     >
                       답글 달기
@@ -2199,7 +2199,7 @@ export function WhiteboardCanvas() {
             <div className="mt-2 flex justify-end">
               <button
                 type="button"
-                className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white hover:bg-slate-700"
+                className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
                 onClick={addComment}
               >
                 댓글 등록
@@ -2225,7 +2225,7 @@ export function WhiteboardCanvas() {
               <button
                 key={color}
                 type="button"
-                className="h-5 w-5 rounded border border-slate-300"
+                className="h-5 w-5 rounded border border-blue-200"
                 style={{ backgroundColor: color }}
                 onClick={() => {
                   if (colorMenu.target === "pen") setPenColor(color);
@@ -2257,7 +2257,7 @@ export function WhiteboardCanvas() {
         >
           <button
             type="button"
-            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+            className="w-full px-3 py-2 text-left text-sm text-orange-700 hover:bg-orange-50"
             onClick={() => {
               const nodeId = contextMenu.node.id;
               const current = useBoardStore.getState().textNodes;
@@ -2270,7 +2270,7 @@ export function WhiteboardCanvas() {
           </button>
           <button
             type="button"
-            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+            className="w-full px-3 py-2 text-left text-sm text-blue-700 hover:bg-blue-50"
             onClick={() => {
               openMindmapModal({
                 keyword: contextMenu.node.text,

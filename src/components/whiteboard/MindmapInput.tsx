@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useBoardStore } from "@/stores/useBoardStore";
 import { useWhiteboardRealtime } from "@/contexts/WhiteboardRealtimeContext";
 import { layoutMindmapNodes } from "@/lib/mindmapLayout";
+import { MindGridSpinner } from "@/components/layout/MindGridSpinner";
 
 export function MindmapInput() {
   const textNodes = useBoardStore((s) => s.textNodes);
@@ -60,9 +61,19 @@ export function MindmapInput() {
       <button
         type="submit"
         disabled={loading || !keyword.trim()}
-        className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+        className="relative overflow-hidden rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {loading ? "생성 중…" : "AI 생성"}
+        {loading ? (
+          <>
+            <span className="relative z-10 inline-flex items-center justify-center gap-2">
+              <MindGridSpinner size={18} />
+              생성 중…
+            </span>
+            <span className="mindgrid-shimmer" aria-hidden />
+          </>
+        ) : (
+          "AI 생성"
+        )}
       </button>
       {error && (
         <span className="text-sm text-red-600" role="alert">
