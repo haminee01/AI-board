@@ -1392,74 +1392,79 @@ export function WhiteboardCanvas() {
     return () => window.removeEventListener("contextmenu", onGlobalContextMenu);
   }, []);
 
-  // iOS/iPadOS: 펜/형광펜 버튼 길게 누르면 색상 메뉴 열기
+  // 데스크톱: 더블 클릭, 모바일(iOS/iPadOS): 더블 탭으로 펜/형광펜 색상 메뉴 열기
   useEffect(() => {
-    const LONG_PRESS_MS = 450;
-    const MOVE_CANCEL_PX = 10;
-    let timer: number | null = null;
-    let startX = 0;
-    let startY = 0;
-    let target: "pen" | "highlighter" | null = null;
+    const DOUBLE_TAP_MS = 320;
+    const MOVE_CANCEL_PX = 12;
 
-    const clear = () => {
-      if (timer != null) window.clearTimeout(timer);
-      timer = null;
-      target = null;
+    let lastTapAt = 0;
+    let lastTapX = 0;
+    let lastTapY = 0;
+    let lastTapTarget: "pen" | "highlighter" | null = null;
+
+    const openColorMenu = (x: number, y: number, target: "pen" | "highlighter") => {
+      setContextMenu(null);
+      const p = clampFixedMenuPosition(x, y, 220, 200);
+      setColorMenu({ x: p.left, y: p.top, target });
     };
 
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+    const getTarget = (eventTarget: EventTarget | null) => {
+      const el = (eventTarget as HTMLElement | null)?.closest<HTMLElement>(
         "[data-color-menu-target]",
       );
       const menuTarget = el?.dataset.colorMenuTarget;
-      if (menuTarget !== "pen" && menuTarget !== "highlighter") return;
+      return menuTarget === "pen" || menuTarget === "highlighter"
+        ? (menuTarget as "pen" | "highlighter")
+        : null;
+    };
 
-      const t = e.touches[0]!;
-      startX = t.clientX;
-      startY = t.clientY;
-      target = menuTarget;
+    const onDblClick = (e: MouseEvent) => {
+      const t = getTarget(e.target);
+      if (!t) return;
+      e.preventDefault();
+      openColorMenu(e.clientX, e.clientY, t);
+    };
 
-      clear();
-      timer = window.setTimeout(() => {
-        if (!target) return;
-        // iOS 기본 callout/텍스트 선택 방지
+    const onTouchEnd = (e: TouchEvent) => {
+      // touchend에는 touches가 0일 수 있어 changedTouches 사용
+      const t = getTarget(e.target);
+      if (!t) return;
+      const touch = e.changedTouches?.[0];
+      if (!touch) return;
+
+      const now = Date.now();
+      const dx = touch.clientX - lastTapX;
+      const dy = touch.clientY - lastTapY;
+      const closeEnough = Math.hypot(dx, dy) <= MOVE_CANCEL_PX;
+
+      if (
+        lastTapTarget === t &&
+        closeEnough &&
+        now - lastTapAt > 0 &&
+        now - lastTapAt <= DOUBLE_TAP_MS
+      ) {
         e.preventDefault();
-        setContextMenu(null);
-        const p = clampFixedMenuPosition(startX, startY, 220, 200);
-        setColorMenu({ x: p.left, y: p.top, target });
-        clear();
-      }, LONG_PRESS_MS);
+        openColorMenu(touch.clientX, touch.clientY, t);
+        lastTapAt = 0;
+        lastTapTarget = null;
+        return;
+      }
+
+      lastTapAt = now;
+      lastTapX = touch.clientX;
+      lastTapY = touch.clientY;
+      lastTapTarget = t;
     };
 
-    const onTouchMove = (e: TouchEvent) => {
-      if (!timer || e.touches.length !== 1) return;
-      const t = e.touches[0]!;
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) clear();
-    };
-
-    const onTouchEnd = () => clear();
-
-    // capture + passive:false 로 preventDefault 가능하게
-    window.addEventListener("touchstart", onTouchStart, {
+    window.addEventListener("dblclick", onDblClick, { capture: true });
+    window.addEventListener("touchend", onTouchEnd, {
       capture: true,
       passive: false,
     });
-    window.addEventListener("touchmove", onTouchMove, {
-      capture: true,
-      passive: true,
-    });
-    window.addEventListener("touchend", onTouchEnd, { capture: true });
-    window.addEventListener("touchcancel", onTouchEnd, { capture: true });
 
     return () => {
-      clear();
-      window.removeEventListener("touchstart", onTouchStart, true);
-      window.removeEventListener("touchmove", onTouchMove, true);
+      window.removeEventListener("dblclick", onDblClick, true);
       window.removeEventListener("touchend", onTouchEnd, true);
-      window.removeEventListener("touchcancel", onTouchEnd, true);
     };
   }, [clampFixedMenuPosition]);
 
